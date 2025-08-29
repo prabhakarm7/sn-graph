@@ -628,19 +628,51 @@ class HierarchicalFilterService:
         # Unpack comma-separated values
         unpacked_client_advisors = []
         
-        # Process PCA values
+        #Process PCA values
         for pca_value in company_pcas_raw:
             if pca_value and pca_value.strip():
-                # Split by comma and clean each value
-                split_values = [val.strip() for val in pca_value.split(',') if val.strip()]
-                unpacked_client_advisors.extend(split_values)
+                # Handle both JSON array strings and comma-separated strings
+                if pca_value.startswith('[') and pca_value.endswith(']'):
+                    # Parse JSON array string: "['Akash Patel','jinny desouze']"
+                    try:
+                        import ast
+                        parsed_values = ast.literal_eval(pca_value)
+                        if isinstance(parsed_values, list):
+                            for val in parsed_values:
+                                if val and str(val).strip():
+                                    unpacked_client_advisors.append(str(val).strip())
+                    except (ValueError, SyntaxError) as e:
+                        print(f"⚠️ DEBUG: Failed to parse PCA array string '{pca_value}': {e}")
+                        # Fallback: treat as comma-separated
+                        split_values = [val.strip() for val in pca_value.split(',') if val.strip()]
+                        unpacked_client_advisors.extend(split_values)
+                else:
+                    # Regular comma-separated string
+                    split_values = [val.strip() for val in pca_value.split(',') if val.strip()]
+                    unpacked_client_advisors.extend(split_values)
         
         # Process ACA values
         for aca_value in company_acas_raw:
             if aca_value and aca_value.strip():
-                # Split by comma and clean each value
-                split_values = [val.strip() for val in aca_value.split(',') if val.strip()]
-                unpacked_client_advisors.extend(split_values)
+                # Handle both JSON array strings and comma-separated strings
+                if aca_value.startswith('[') and aca_value.endswith(']'):
+                    # Parse JSON array string: "['Akash Patel','jinny desouze']"
+                    try:
+                        import ast
+                        parsed_values = ast.literal_eval(aca_value)
+                        if isinstance(parsed_values, list):
+                            for val in parsed_values:
+                                if val and str(val).strip():
+                                    unpacked_client_advisors.append(str(val).strip())
+                    except (ValueError, SyntaxError) as e:
+                        print(f"⚠️ DEBUG: Failed to parse ACA array string '{aca_value}': {e}")
+                        # Fallback: treat as comma-separated
+                        split_values = [val.strip() for val in aca_value.split(',') if val.strip()]
+                        unpacked_client_advisors.extend(split_values)
+                else:
+                    # Regular comma-separated string
+                    split_values = [val.strip() for val in aca_value.split(',') if val.strip()]
+                    unpacked_client_advisors.extend(split_values)
         
         # Remove duplicates and sort
         filter_options["client_advisors"] = sorted(list(set(unpacked_client_advisors)))
