@@ -7,11 +7,14 @@ import ConsultantNetworkGraph from './components/ConsultantNetworkGraph';
 import JPMGraphPreview from './components/JPMGraphPreview';
 import JPMGraphPreviewEx from './components/JPMGraphPreviewEx';
 import JPMGraphPreviewWithFilters from './components/JPMGraphPreviewWithFilters';
+import JPMGraphComplete from './components/JPMGraphComplete';
+import JPMGraphPerformanceOptimized from './components/JPMGraphPerformanceOptimized';
+
 
 function App() {
   return (
     <div className="App">
-      <JPMGraphPreviewWithFilters />
+      <JPMGraphPerformanceOptimized />
     </div>
   );
 }

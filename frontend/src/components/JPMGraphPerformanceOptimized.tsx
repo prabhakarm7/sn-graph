@@ -1,4 +1,5 @@
-// JPMGraphPreviewWithFilters.tsx - Enhanced with Backend Processing + All Original Components
+// JPMGraphPerformanceOptimized.tsx - Main component with performance optimization
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import ReactFlow, {
   Background,
@@ -22,8 +23,9 @@ import { WorkingFiltersInterface } from './components/WorkingFiltersInterface';
 import { StatsCards } from './components/StatsCards';
 import { InsightsPanel } from './components/InsightsPanel';
 import { DebugDataDisplay } from './components/DebugDataDisplay';
+import { PerformanceMessage } from './components/PerformanceMessage';
 import { AppNodeData, EdgeData } from './types/GraphTypes';
-import { useEnhancedBackendData } from './hooks/useEnhancedBackendData';
+import { usePerformanceOptimizedBackendData } from './hooks/usePerformanceOptimizedBackendData';
 
 import { GraphDataProvider } from './context/GraphDataProvider';
 
@@ -32,7 +34,7 @@ const STABLE_NODE_TYPES = nodeTypes;
 const STABLE_EDGE_TYPES = edgeTypes;
 
 // Inner component that uses ReactFlow hooks
-function EnhancedGraphComponent() {
+function PerformanceOptimizedGraphComponent() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { fitView } = useReactFlow();
   const [selectedNode, setSelectedNode] = useState<Node<AppNodeData> | null>(null);
@@ -46,68 +48,69 @@ function EnhancedGraphComponent() {
   // Local recommendations mode state
   const [recommendationsMode, setRecommendationsMode] = useState(false);
 
-  // ENHANCED: Use backend data hook with all original functionality
+  // PERFORMANCE OPTIMIZED: Use performance-optimized backend data hook
   const { 
-    graphData,           // Backend processed + frontend layout enhanced
+    graphData,           // With performance state
     filterOptions,
     currentFilters,
     currentRegions,
     initialLoading, 
     filterLoading, 
     error,
-    changeRegions,       // Backend processing for region changes
-    applyFilters,        // Backend processing for filters
-    resetFilters,
+    changeRegions,       // Optimized: filters-only on region change
+    applyFilters,        // Optimized: performance check before rendering
+    resetFilters,        // Optimized: back to filters-only
     getAvailableRegions,
     hasData,
     nodeCount,
     edgeCount,
-    // Enhanced: Backend + mode detection
+    performanceState,    // NEW: Performance state tracking
     switchMode,
     isRecommendationsMode,
     dataSource,
     currentMode
-  } = useEnhancedBackendData();
+  } = usePerformanceOptimizedBackendData();
 
   // Sync local state with hook's mode detection
   useEffect(() => {
     setRecommendationsMode(isRecommendationsMode);
   }, [isRecommendationsMode]);
 
-  // Handle recommendations mode changes with backend processing
+  // Handle recommendations mode changes
   const handleRecommendationsModeChange = useCallback(async (mode: 'standard' | 'recommendations') => {
-    console.log(`Switching to ${mode} mode with backend processing`);
+    console.log(`Performance Optimized: Switching to ${mode} mode`);
     setRecommendationsMode(mode === 'recommendations');
     
     try {
       await switchMode(mode);
-      console.log(`Successfully switched to ${mode} mode via backend`);
+      console.log(`Performance Optimized: Successfully switched to ${mode} mode`);
     } catch (err) {
-      console.error(`Failed to switch to ${mode} mode:`, err);
+      console.error(`Performance Optimized: Failed to switch to ${mode} mode:`, err);
     }
   }, [switchMode]);
 
-  // ReactFlow state - enhanced with backend data
+  // ReactFlow state - performance optimized
   const [nodes, setNodes, onNodesChange] = useNodesState<AppNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  // Update ReactFlow when backend-processed data changes
+  // Update ReactFlow when performance-optimized data changes
   useEffect(() => {
-    console.log('Backend-processed data with enhanced layout:', {
+    console.log('Performance Optimized: Data state change:', {
       nodes: graphData.nodes.length,
       edges: graphData.edges.length,
       canRender: graphData.canRender,
-      mode: currentMode,
+      performanceMode: graphData.performance.mode,
       dataSource: dataSource
     });
     
+    // Only update ReactFlow if we can render and have data
     if (!graphData.canRender || graphData.nodes.length === 0) {
       setNodes([]);
       setEdges([]);
       return;
     }
     
-    // Backend provides data, enhanced hook provides layout
+    // Performance-optimized data with layout
     setNodes(graphData.nodes);
     setEdges(graphData.edges);
     
@@ -115,44 +118,27 @@ function EnhancedGraphComponent() {
     const timeoutId = setTimeout(() => {
       try {
         fitView({ padding: 0.2, duration: 500 });
-        console.log('FitView applied to backend-processed + layout-enhanced data');
+        console.log('Performance Optimized: FitView applied');
       } catch (error) {
-        console.warn('FitView failed:', error);
+        console.warn('Performance Optimized: FitView failed:', error);
       }
     }, 150);
     
     return () => clearTimeout(timeoutId);
-  }, [graphData, setNodes, setEdges, fitView, currentMode, dataSource]);
+  }, [graphData, setNodes, setEdges, fitView, dataSource]);
 
-  // Debug logging for ReactFlow state changes
-  useEffect(() => {
-    console.log('ReactFlow nodes state (backend processed):', {
-      count: nodes.length,
-      nodeIds: nodes.slice(0, 5).map(n => n.id),
-      nodeTypes: Array.from(new Set(nodes.map(n => n.type).filter(Boolean))),
-      sampleNode: nodes[0] ? {
-        id: nodes[0].id,
-        type: nodes[0].type,
-        name: nodes[0].data?.name,
-        position: nodes[0].position
-      } : null
-    });
-  }, [nodes]);
-
-  useEffect(() => {
-    console.log('ReactFlow edges state (backend processed):', {
-      count: edges.length,
-      edgeIds: edges.slice(0, 5).map(e => e.id),
-      edgeTypes: Array.from(new Set(edges.map(e => e.data?.relType).filter(Boolean))),
-      sampleEdge: edges[0] ? {
-        id: edges[0].id,
-        source: edges[0].source,
-        target: edges[0].target,
-        type: edges[0].type,
-        relType: edges[0].data?.relType
-      } : null
-    });
-  }, [edges]);
+  // Handle suggestion application from performance message
+  const handleApplySuggestion = useCallback(async (suggestion: any) => {
+    console.log('Performance Optimized: Applying suggestion:', suggestion);
+    
+    // Convert suggestion to filter criteria
+    const filterUpdate: any = {};
+    if (suggestion.filter_field && suggestion.filter_value) {
+      filterUpdate[suggestion.filter_field] = [suggestion.filter_value];
+    }
+    
+    await applyFilters(filterUpdate);
+  }, [applyFilters]);
 
   // ResizeObserver with proper error handling
   useEffect(() => {
@@ -188,6 +174,7 @@ function EnhancedGraphComponent() {
     };
   }, []);
 
+  // Event handlers
   const handleNodeClick = (event: React.MouseEvent, node: Node<AppNodeData>) => {
     setSelectedNode(node);
     setSelectedEdge(null);
@@ -241,12 +228,12 @@ function EnhancedGraphComponent() {
       }}>
         <CircularProgress sx={{ color: recommendationsMode ? '#f59e0b' : '#6366f1', mb: 2 }} size={60} />
         <Typography variant="h6" sx={{ mb: 1 }}>
-          Loading Network Data (Backend Processed)
+          Loading Filter Options (Performance Optimized)
         </Typography>
         <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center' }}>
-          Backend processing: {currentMode} workflow for {currentRegions.join(', ')}
+          Loading filters for {currentRegions.join(', ')} region
           <br />
-          Complex rating collection and filtering handled server-side
+          Apply filters to load graph data
         </Typography>
       </Box>
     );
@@ -291,7 +278,7 @@ function EnhancedGraphComponent() {
                 border: '1px solid rgba(239, 68, 68, 0.3)'
               }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-                  Backend Processing Error
+                  Performance Optimized Backend Error
                 </Typography>
                 {error}
               </Alert>
@@ -316,14 +303,15 @@ function EnhancedGraphComponent() {
               <Box sx={{ textAlign: 'center' }}>
                 <CircularProgress sx={{ color: recommendationsMode ? '#f59e0b' : '#6366f1', mb: 2 }} />
                 <Typography sx={{ color: 'white' }}>
-                  Backend processing {recommendationsMode ? 'recommendations' : 'standard'} filters...
+                  Performance check: Processing {recommendationsMode ? 'recommendations' : 'standard'} filters...
                 </Typography>
               </Box>
             </Box>
           )}
 
-          {/* ReactFlow Graph with Backend Data */}
-          {hasData ? (
+          {/* PERFORMANCE OPTIMIZED: Show graph OR performance message */}
+          {hasData && graphData.canRender ? (
+            // Show ReactFlow Graph
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -377,27 +365,17 @@ function EnhancedGraphComponent() {
               />
             </ReactFlow>
           ) : (
-            // Empty state
-            <Box sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: '100%',
-              color: 'white'
-            }}>
-              <Typography variant="h6" sx={{ mb: 1, opacity: 0.8 }}>
-                No Data Available
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.6, textAlign: 'center' }}>
-                Try adjusting your {recommendationsMode ? 'recommendations' : 'hierarchical'} filters or check your region selection
-                <br />
-                Backend processed your request but found no matching data
-              </Typography>
-            </Box>
+            // Show Performance Message (filters_only, too_many_nodes states)
+            <PerformanceMessage
+              performanceState={performanceState}
+              currentRegion={currentRegions[0]}
+              recommendationsMode={recommendationsMode}
+              onApplySuggestion={handleApplySuggestion}
+              isDarkTheme={isDarkTheme}
+            />
           )}
 
-          {/* Enhanced Stats Cards with Backend Processing Info */}
+          {/* Enhanced Stats Cards with Performance Info */}
           <StatsCards 
             nodes={nodes} 
             edges={edges} 
@@ -411,7 +389,7 @@ function EnhancedGraphComponent() {
             currentRegions={currentRegions}
             nodeCount={nodeCount}
             edgeCount={edgeCount}
-            dataSource={dataSource}
+            dataSource={`${dataSource} (${performanceState.mode})`}
           />
           
           {/* Debug Data Display */}
@@ -440,7 +418,7 @@ function EnhancedGraphComponent() {
         </Box>
       </Box>
 
-      {/* Right Panel - Filters and Chat */}
+      {/* Right Panel - Filters and Chat (Performance Optimized) */}
       <Drawer 
         variant="permanent" 
         anchor="right" 
@@ -458,7 +436,7 @@ function EnhancedGraphComponent() {
         }}
       >
         <Box sx={{ width: 320, height: '100%', display: 'flex', flexDirection: 'column' }}>
-          {/* Tab header */}
+          {/* Tab header with performance indicators */}
           <Box sx={{ 
             flexShrink: 0,
             borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
@@ -499,19 +477,18 @@ function EnhancedGraphComponent() {
                 icon={<FilterIcon />} 
                 label={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    Backend Filters
+                    Performance Filters
                     {filterLoading && (
                       <CircularProgress size={12} sx={{ color: '#6366f1' }} />
                     )}
-                    {/* Show mode indicator */}
-                    {recommendationsMode && (
-                      <Box sx={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: '50%',
-                        bgcolor: '#f59e0b'
-                      }} />
-                    )}
+                    {/* Performance state indicator */}
+                    <Box sx={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      bgcolor: performanceState.mode === 'graph_ready' ? '#10b981' : 
+                               performanceState.mode === 'too_many_nodes' ? '#f59e0b' : '#6366f1'
+                    }} />
                   </Box>
                 }
                 iconPosition="start"
@@ -523,7 +500,7 @@ function EnhancedGraphComponent() {
             </Tabs>
           </Box>
           
-          {/* Tab content with proper height calculation */}
+          {/* Tab content with performance optimization */}
           <Box sx={{ 
             flexGrow: 1, 
             overflow: 'hidden',
@@ -547,7 +524,7 @@ function EnhancedGraphComponent() {
               )}
               {tabValue === 1 && (
                 <Box sx={{ height: '100%', overflow: 'hidden' }}>
-                  {/* Enhanced WorkingFiltersInterface with backend processing indicator */}
+                  {/* Performance-Optimized WorkingFiltersInterface */}
                   <WorkingFiltersInterface 
                     recommendationsMode={recommendationsMode} 
                     isDarkTheme={isDarkTheme}
@@ -563,10 +540,10 @@ function EnhancedGraphComponent() {
 }
 
 // Main wrapper component with ReactFlowProvider
-export default function JPMGraphPreviewWithFilters() {
+export default function JPMGraphPerformanceOptimized() {
   return (
     <ReactFlowProvider>
-      <EnhancedGraphComponent />
+      <PerformanceOptimizedGraphComponent />
     </ReactFlowProvider>
   );
 }

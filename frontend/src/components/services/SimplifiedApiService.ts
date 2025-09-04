@@ -1,5 +1,6 @@
 // services/SimplifiedApiService.ts - Frontend just sends filters, receives ready data
 import { FilterCriteria } from '../types/FitlerTypes';
+import { BackendFilterOptions, transformBackendFilterOptions } from '../types/BackendTypes';
 
 interface BackendResponse {
   success: boolean;
@@ -33,7 +34,7 @@ export class SimplifiedApiService {
   public readonly baseUrl: string;
   
   private constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    this.baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
     console.log('SimplifiedApiService: All complex logic moved to backend');
   }
   
@@ -287,8 +288,9 @@ export class SimplifiedApiService {
     };
   }
 
-  private getEmptyFilterOptions(recommendationsMode: boolean): Record<string, any> {
-    const base = {
+  
+  private getEmptyFilterOptions(recommendationsMode: boolean): BackendFilterOptions {
+    const base: BackendFilterOptions = {
       markets: [],
       channels: [],
       asset_classes: [],
