@@ -116,11 +116,11 @@ class CompleteBackendFilterService:
         filters: Dict[str, Any],
         recommendations_mode: bool
     ) -> Tuple[str, Dict[str, Any]]:
-        """Build single optimized query with ALL filters implemented and correct syntax."""
+        """Build single optimized query with ALL filters implemented - REVERT TO WORKING VERSION."""
         
         params = {"region": region}
         
-        # Add ALL filter parameters upfront
+        # Add ALL filter parameters upfront (same as before)
         if filters.get('consultantIds'):
             params['consultantIds'] = filters['consultantIds']
         if filters.get('clientIds'):
@@ -150,7 +150,7 @@ class CompleteBackendFilterService:
         
         print(f"Building COMPLETE query with ALL filters: {filters}")
         
-        # Helper functions for building filter conditions
+        # COMPLETE helper functions for ALL filter conditions (same as your working version)
         def build_company_conditions(company_var: str) -> List[str]:
             conditions = [f"({company_var}.region = $region OR $region IN {company_var}.region)"]
             
@@ -234,78 +234,90 @@ class CompleteBackendFilterService:
                 all_conditions.extend(condition_list)
             return " AND ".join(all_conditions) if all_conditions else "true"
         
-        # Build the complete query
+        # REVERT TO YOUR ORIGINAL WORKING QUERY STRUCTURE
         if recommendations_mode:
             complete_query = f"""
             // Path 1: Consultant -> Field Consultant -> Company -> Incumbent Product -> Product
-            OPTIONAL MATCH (cons1:CONSULTANT)-[emp1:EMPLOYS]->(fc1:FIELD_CONSULTANT)-[cov1:COVERS]->(c1:COMPANY)-[owns1:OWNS]->(ip1:INCUMBENT_PRODUCT)-[rec1:BI_RECOMMENDS]->(p1:PRODUCT)
+            OPTIONAL MATCH path1 = (a:CONSULTANT)-[f1:EMPLOYS]->(b:FIELD_CONSULTANT)-[i1:COVERS]->(c:COMPANY)
+                -[h1:OWNS]->(ip:INCUMBENT_PRODUCT)-[r1:BI_RECOMMENDS]->(p:PRODUCT)
             WHERE {combine_conditions([
-                build_company_conditions('c1'),
-                build_consultant_conditions('cons1'),
-                build_product_conditions('p1'),
-                build_field_consultant_conditions('fc1'),
-                build_mandate_conditions('owns1'),
-                build_influence_conditions('emp1'),
-                build_influence_conditions('cov1')
+                build_company_conditions('c'),
+                build_consultant_conditions('a'),
+                build_product_conditions('p'),
+                build_field_consultant_conditions('b'),
+                build_mandate_conditions('h1'),
+                build_influence_conditions('f1'),
+                build_influence_conditions('i1')
+            ])}
+            OPTIONAL MATCH (a)-[j1:RATES]->(p)
+            WHERE {combine_conditions([
+                build_rating_conditions('j1'),
+                build_influence_conditions('j1')
             ])}
             
             // Path 2: Consultant -> Company -> Incumbent Product -> Product (direct coverage)
-            OPTIONAL MATCH (cons2:CONSULTANT)-[cov2:COVERS]->(c2:COMPANY)-[owns2:OWNS]->(ip2:INCUMBENT_PRODUCT)-[rec2:BI_RECOMMENDS]->(p2:PRODUCT)
+            OPTIONAL MATCH path2 = (a2:CONSULTANT)-[i2:COVERS]->(c2:COMPANY)
+                -[h2:OWNS]->(ip2:INCUMBENT_PRODUCT)-[r2:BI_RECOMMENDS]->(p2:PRODUCT)  
             WHERE {combine_conditions([
                 build_company_conditions('c2'),
-                build_consultant_conditions('cons2'),
+                build_consultant_conditions('a2'),
                 build_product_conditions('p2'),
-                build_mandate_conditions('owns2'),
-                build_influence_conditions('cov2')
+                build_mandate_conditions('h2'),
+                build_influence_conditions('i2')
+            ])}
+            OPTIONAL MATCH (a2)-[j2:RATES]->(p2)
+            WHERE {combine_conditions([
+                build_rating_conditions('j2'),
+                build_influence_conditions('j2')
             ])}
             
-            // Path 3: Company-only paths for incumbent products
-            OPTIONAL MATCH (c3:COMPANY)-[owns3:OWNS]->(ip3:INCUMBENT_PRODUCT)-[rec3:BI_RECOMMENDS]->(p3:PRODUCT)
+            // Path 3: Direct consultant ratings with recommendation chain
+            OPTIONAL MATCH path3 = (a3:CONSULTANT)-[j3:RATES]->(p3:PRODUCT)
+            WHERE {combine_conditions([
+                build_consultant_conditions('a3'),
+                build_product_conditions('p3'),
+                build_rating_conditions('j3'),
+                build_influence_conditions('j3')
+            ])}
+            OPTIONAL MATCH (p3)<-[r3:BI_RECOMMENDS]-(ip3:INCUMBENT_PRODUCT)<-[h3:OWNS]-(c3:COMPANY)
             WHERE {combine_conditions([
                 build_company_conditions('c3'),
-                build_product_conditions('p3'),
-                build_mandate_conditions('owns3')
+                build_mandate_conditions('h3')
             ])}
             
-            // Collect ONLY valid relationships from filtered paths
             WITH 
-                COLLECT(CASE WHEN emp1 IS NOT NULL THEN {{rel: emp1, source: cons1, target: fc1}} END) +
-                COLLECT(CASE WHEN cov1 IS NOT NULL THEN {{rel: cov1, source: fc1, target: c1}} END) +
-                COLLECT(CASE WHEN owns1 IS NOT NULL THEN {{rel: owns1, source: c1, target: ip1}} END) +
-                COLLECT(CASE WHEN rec1 IS NOT NULL THEN {{rel: rec1, source: ip1, target: p1}} END) +
-                COLLECT(CASE WHEN cov2 IS NOT NULL THEN {{rel: cov2, source: cons2, target: c2}} END) +
-                COLLECT(CASE WHEN owns2 IS NOT NULL THEN {{rel: owns2, source: c2, target: ip2}} END) +
-                COLLECT(CASE WHEN rec2 IS NOT NULL THEN {{rel: rec2, source: ip2, target: p2}} END) +
-                COLLECT(CASE WHEN owns3 IS NOT NULL THEN {{rel: owns3, source: c3, target: ip3}} END) +
-                COLLECT(CASE WHEN rec3 IS NOT NULL THEN {{rel: rec3, source: ip3, target: p3}} END) AS valid_relationship_data
+                COLLECT(DISTINCT a) + COLLECT(DISTINCT a2) + COLLECT(DISTINCT a3) AS consultants,
+                COLLECT(DISTINCT b) AS field_consultants,
+                COLLECT(DISTINCT c) + COLLECT(DISTINCT c2) + COLLECT(DISTINCT c3) AS companies,
+                COLLECT(DISTINCT ip) + COLLECT(DISTINCT ip2) + COLLECT(DISTINCT ip3) AS incumbent_products,
+                COLLECT(DISTINCT p) + COLLECT(DISTINCT p2) + COLLECT(DISTINCT p3) AS products,
+                COLLECT(DISTINCT f1) + COLLECT(DISTINCT i1) + COLLECT(DISTINCT i2) + 
+                COLLECT(DISTINCT h1) + COLLECT(DISTINCT h2) + COLLECT(DISTINCT h3) + 
+                COLLECT(DISTINCT r1) + COLLECT(DISTINCT r2) + COLLECT(DISTINCT r3) + 
+                COLLECT(DISTINCT j1) + COLLECT(DISTINCT j2) + COLLECT(DISTINCT j3) AS all_rels
             
-            // Remove null entries and extract connected nodes
-            WITH [rd IN valid_relationship_data WHERE rd IS NOT NULL] AS filtered_relationships
+            WITH consultants + field_consultants + companies + incumbent_products + products AS allNodes, all_rels
             
-            WITH filtered_relationships,
-                reduce(all_nodes = [], rd IN filtered_relationships | all_nodes + [rd.source, rd.target]) AS connected_nodes
-            
-            // Remove duplicate nodes
-            WITH filtered_relationships,
-                reduce(unique_nodes = [], node IN connected_nodes | 
-                    CASE WHEN node IN unique_nodes THEN unique_nodes ELSE unique_nodes + [node] END
-                ) AS final_nodes
-            
-            // Collect ratings for final nodes only
-            UNWIND final_nodes AS node
+            // Collect ratings for products server-side
+            UNWIND allNodes AS node
             OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(node)
-            WHERE ('PRODUCT' IN labels(node) OR 'INCUMBENT_PRODUCT' IN labels(node))
+            WHERE 'PRODUCT' IN labels(node) OR 'INCUMBENT_PRODUCT' IN labels(node)
             
-            WITH node, COLLECT({{consultant: rating_consultant.name, rankgroup: rating_rel.rankgroup}}) AS node_ratings, 
-                final_nodes, filtered_relationships
+            WITH node, COLLECT({{consultant: rating_consultant.name, rankgroup: rating_rel.rankgroup}}) AS node_ratings, allNodes, all_rels
             
             WITH COLLECT({{
                 node_id: node.id,
                 ratings: [r IN node_ratings WHERE r.consultant IS NOT NULL | r]
-            }}) AS ratings_map, final_nodes, filtered_relationships
+            }}) AS ratings_map, allNodes, all_rels
+            
+            WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
+                all_rels, ratings_map
+            
+            // SIMPLIFIED: Just pass through nodes - orphan removal will be done in post-processing
+            WITH filteredNodes AS connectedNodes, all_rels, ratings_map
             
             RETURN {{
-                nodes: [node IN final_nodes WHERE node.name IS NOT NULL | {{
+                nodes: [node IN connectedNodes | {{
                     id: node.id,
                     type: labels(node)[0],
                     data: {{
@@ -323,18 +335,19 @@ class CompleteBackendFilterService:
                         ratings: [rm IN ratings_map WHERE rm.node_id = node.id | rm.ratings][0]
                     }}
                 }}],
-                relationships: [rd IN filtered_relationships | {{
-                    id: toString(id(rd.rel)),
-                    source: rd.source.id,
-                    target: rd.target.id,
+                relationships: [rel IN all_rels WHERE rel IS NOT NULL AND 
+                            type(rel) <> 'RATES' | {{
+                    id: toString(id(rel)),
+                    source: startNode(rel).id,
+                    target: endNode(rel).id,
                     type: 'custom',
                     data: {{
-                        relType: type(rd.rel),
-                        sourceId: rd.source.id,
-                        targetId: rd.target.id,
-                        mandate_status: rd.rel.mandate_status,
-                        level_of_influence: rd.rel.level_of_influence,
-                        rankgroup: rd.rel.rankgroup
+                        relType: type(rel),
+                        sourceId: startNode(rel).id,
+                        targetId: endNode(rel).id,
+                        mandate_status: rel.mandate_status,
+                        level_of_influence: rel.level_of_influence,
+                        rankgroup: rel.rankgroup
                     }}
                 }}]
             }} AS GraphData
@@ -342,71 +355,90 @@ class CompleteBackendFilterService:
         else:
             complete_query = f"""
             // Path 1: Consultant -> Field Consultant -> Company -> Product
-            OPTIONAL MATCH (cons1:CONSULTANT)-[emp1:EMPLOYS]->(fc1:FIELD_CONSULTANT)-[cov1:COVERS]->(c1:COMPANY)-[owns1:OWNS]->(p1:PRODUCT)
+            OPTIONAL MATCH path1 = (a:CONSULTANT)-[f1:EMPLOYS]->(b:FIELD_CONSULTANT)-[i1:COVERS]->(c:COMPANY)-[g1:OWNS]->(p:PRODUCT)
             WHERE {combine_conditions([
-                build_company_conditions('c1'),
-                build_consultant_conditions('cons1'),
-                build_product_conditions('p1'),
-                build_field_consultant_conditions('fc1'),
-                build_mandate_conditions('owns1'),
-                build_influence_conditions('emp1'),
-                build_influence_conditions('cov1')
+                build_company_conditions('c'),
+                build_consultant_conditions('a'),
+                build_product_conditions('p'),
+                build_field_consultant_conditions('b'),
+                build_mandate_conditions('g1'),
+                build_influence_conditions('f1'),
+                build_influence_conditions('i1')
+            ])}
+            OPTIONAL MATCH (a)-[j1:RATES]->(p)
+            WHERE {combine_conditions([
+                build_rating_conditions('j1'),
+                build_influence_conditions('j1')
             ])}
             
             // Path 2: Consultant -> Company -> Product (direct coverage)
-            OPTIONAL MATCH (cons2:CONSULTANT)-[cov2:COVERS]->(c2:COMPANY)-[owns2:OWNS]->(p2:PRODUCT)
+            OPTIONAL MATCH path2 = (a2:CONSULTANT)-[i2:COVERS]->(c2:COMPANY)-[g2:OWNS]->(p2:PRODUCT)
             WHERE {combine_conditions([
                 build_company_conditions('c2'),
-                build_consultant_conditions('cons2'),
+                build_consultant_conditions('a2'),
                 build_product_conditions('p2'),
-                build_mandate_conditions('owns2'),
-                build_influence_conditions('cov2')
+                build_mandate_conditions('g2'),
+                build_influence_conditions('i2')
+            ])}
+            OPTIONAL MATCH (a2)-[j2:RATES]->(p2)
+            WHERE {combine_conditions([
+                build_rating_conditions('j2'),
+                build_influence_conditions('j2')
             ])}
             
-            // Path 3: Company-product only relationships
-            OPTIONAL MATCH (c3:COMPANY)-[owns3:OWNS]->(p3:PRODUCT)
+            // Path 3: Direct consultant to product ratings
+            OPTIONAL MATCH path3 = (a3:CONSULTANT)-[j3:RATES]->(p3:PRODUCT)
+            WHERE {combine_conditions([
+                build_consultant_conditions('a3'),
+                build_product_conditions('p3'),
+                build_rating_conditions('j3'),
+                build_influence_conditions('j3')
+            ])}
+            OPTIONAL MATCH (p3)<-[g3:OWNS]-(c3:COMPANY)
             WHERE {combine_conditions([
                 build_company_conditions('c3'),
-                build_product_conditions('p3'),
-                build_mandate_conditions('owns3')
+                build_mandate_conditions('g3')
             ])}
             
-            // Collect valid relationships from filtered paths
+            // Path 4: Company-product only relationships
+            OPTIONAL MATCH path4 = (c4:COMPANY)-[g4:OWNS]->(p4:PRODUCT)
+            WHERE {combine_conditions([
+                build_company_conditions('c4'),
+                build_product_conditions('p4'),
+                build_mandate_conditions('g4')
+            ])}
+            
             WITH 
-                COLLECT(CASE WHEN emp1 IS NOT NULL THEN {{rel: emp1, source: cons1, target: fc1}} END) +
-                COLLECT(CASE WHEN cov1 IS NOT NULL THEN {{rel: cov1, source: fc1, target: c1}} END) +
-                COLLECT(CASE WHEN owns1 IS NOT NULL THEN {{rel: owns1, source: c1, target: p1}} END) +
-                COLLECT(CASE WHEN cov2 IS NOT NULL THEN {{rel: cov2, source: cons2, target: c2}} END) +
-                COLLECT(CASE WHEN owns2 IS NOT NULL THEN {{rel: owns2, source: c2, target: p2}} END) +
-                COLLECT(CASE WHEN owns3 IS NOT NULL THEN {{rel: owns3, source: c3, target: p3}} END) AS valid_relationship_data
+                COLLECT(DISTINCT a) + COLLECT(DISTINCT a2) + COLLECT(DISTINCT a3) AS consultants,
+                COLLECT(DISTINCT b) AS field_consultants,
+                COLLECT(DISTINCT c) + COLLECT(DISTINCT c2) + COLLECT(DISTINCT c3) + COLLECT(DISTINCT c4) AS companies,
+                COLLECT(DISTINCT p) + COLLECT(DISTINCT p2) + COLLECT(DISTINCT p3) + COLLECT(DISTINCT p4) AS products,
+                COLLECT(DISTINCT f1) + COLLECT(DISTINCT i1) + COLLECT(DISTINCT i2) + 
+                COLLECT(DISTINCT g1) + COLLECT(DISTINCT g2) + COLLECT(DISTINCT g3) + COLLECT(DISTINCT g4) + 
+                COLLECT(DISTINCT j1) + COLLECT(DISTINCT j2) + COLLECT(DISTINCT j3) AS all_rels
             
-            // Remove null entries and extract connected nodes
-            WITH [rd IN valid_relationship_data WHERE rd IS NOT NULL] AS filtered_relationships
+            WITH consultants + field_consultants + companies + products AS allNodes, all_rels
             
-            WITH filtered_relationships,
-                reduce(all_nodes = [], rd IN filtered_relationships | all_nodes + [rd.source, rd.target]) AS connected_nodes
-            
-            // Remove duplicate nodes
-            WITH filtered_relationships,
-                reduce(unique_nodes = [], node IN connected_nodes | 
-                    CASE WHEN node IN unique_nodes THEN unique_nodes ELSE unique_nodes + [node] END
-                ) AS final_nodes
-            
-            // Collect ratings for final nodes only
-            UNWIND final_nodes AS node
+            // Collect ratings for products server-side
+            UNWIND allNodes AS node
             OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(node)
             WHERE 'PRODUCT' IN labels(node)
             
-            WITH node, COLLECT({{consultant: rating_consultant.name, rankgroup: rating_rel.rankgroup}}) AS node_ratings, 
-                final_nodes, filtered_relationships
+            WITH node, COLLECT({{consultant: rating_consultant.name, rankgroup: rating_rel.rankgroup}}) AS node_ratings, allNodes, all_rels
             
             WITH COLLECT({{
                 node_id: node.id,
                 ratings: [r IN node_ratings WHERE r.consultant IS NOT NULL | r]
-            }}) AS ratings_map, final_nodes, filtered_relationships
+            }}) AS ratings_map, allNodes, all_rels
+            
+            WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
+                all_rels, ratings_map
+            
+            // SIMPLIFIED: Just pass through nodes - orphan removal will be done in post-processing  
+            WITH filteredNodes AS connectedNodes, all_rels, ratings_map
             
             RETURN {{
-                nodes: [node IN final_nodes WHERE node.name IS NOT NULL | {{
+                nodes: [node IN connectedNodes | {{
                     id: node.id,
                     type: labels(node)[0],
                     data: {{
@@ -424,18 +456,19 @@ class CompleteBackendFilterService:
                         ratings: [rm IN ratings_map WHERE rm.node_id = node.id | rm.ratings][0]
                     }}
                 }}],
-                relationships: [rd IN filtered_relationships | {{
-                    id: toString(id(rd.rel)),
-                    source: rd.source.id,
-                    target: rd.target.id,
+                relationships: [rel IN all_rels WHERE rel IS NOT NULL AND
+                            type(rel) <> 'RATES' | {{
+                    id: toString(id(rel)),
+                    source: startNode(rel).id,
+                    target: endNode(rel).id,
                     type: 'custom',
                     data: {{
-                        relType: type(rd.rel),
-                        sourceId: rd.source.id,
-                        targetId: rd.target.id,
-                        mandate_status: rd.rel.mandate_status,
-                        level_of_influence: rd.rel.level_of_influence,
-                        rankgroup: rd.rel.rankgroup
+                        relType: type(rel),
+                        sourceId: startNode(rel).id,
+                        targetId: endNode(rel).id,
+                        mandate_status: rel.mandate_status,
+                        level_of_influence: rel.level_of_influence,
+                        rankgroup: rel.rankgroup
                     }}
                 }}]
             }} AS GraphData
