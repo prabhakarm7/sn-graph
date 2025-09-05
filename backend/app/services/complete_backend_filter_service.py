@@ -443,10 +443,11 @@ class CompleteBackendFilterService:
         region: str, 
         recommendations_mode: bool
     ) -> Dict[str, Any]:
-        """Get ALL filter options with proper data cleaning and deduplication."""
+        """Get ALL filter options with Python-based array flattening."""
         
         try:
             if recommendations_mode:
+                # Simplified query - just collect raw data without complex flattening
                 filter_query = f"""
                 MATCH (c:COMPANY) WHERE (c.region = $region OR $region IN c.region)
                 OPTIONAL MATCH (c)-[:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
@@ -454,37 +455,22 @@ class CompleteBackendFilterService:
                 OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
                 OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
                 
-                WITH 
-                    COLLECT(DISTINCT c.sales_region) AS raw_sales_regions,
-                    COLLECT(DISTINCT c.channel) AS raw_channels,
-                    COLLECT(DISTINCT p.asset_class) AS raw_asset_classes,
-                    COLLECT(DISTINCT c.pca) AS raw_company_pcas,
-                    COLLECT(DISTINCT c.aca) AS raw_company_acas,
-                    COLLECT(DISTINCT cons.pca) AS raw_consultant_pcas,
-                    COLLECT(DISTINCT cons.consultant_advisor) AS raw_consultant_advisors,
-                    COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
-                    COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}) AS consultants,
-                    COLLECT(DISTINCT {{id: fc.name, name: fc.name}}) AS field_consultants,
-                    COLLECT(DISTINCT {{id: c.name, name: c.name}}) AS companies,
-                    COLLECT(DISTINCT {{id: p.name, name: p.name}}) AS products,
-                    COLLECT(DISTINCT {{id: ip.name, name: ip.name}}) AS incumbent_products,
-                    COLLECT(DISTINCT rating.rankgroup) AS raw_ratings
-                
                 RETURN {{
-                    markets: [item IN raw_sales_regions WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
-                    channels: [item IN raw_channels WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
-                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
-                    consultants: [item IN consultants WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    companies: [item IN companies WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    products: [item IN products WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    incumbent_products: [item IN incumbent_products WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    client_advisors: raw_company_pcas + raw_company_acas,
-                    consultant_advisors: raw_consultant_pcas + raw_consultant_advisors,
-                    ratings: [item IN raw_ratings WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
-                    mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
-                    influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
-                }} AS FilterOptions
+                    raw_sales_regions: COLLECT(DISTINCT c.sales_region),
+                    raw_channels: COLLECT(DISTINCT c.channel),
+                    raw_asset_classes: COLLECT(DISTINCT p.asset_class),
+                    raw_company_pcas: COLLECT(DISTINCT c.pca),
+                    raw_company_acas: COLLECT(DISTINCT c.aca),
+                    raw_consultant_pcas: COLLECT(DISTINCT cons.pca),
+                    raw_consultant_advisors: COLLECT(DISTINCT cons.consultant_advisor),
+                    consultants: COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
+                                COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}),
+                    field_consultants: COLLECT(DISTINCT {{id: fc.name, name: fc.name}}),
+                    companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
+                    products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
+                    incumbent_products: COLLECT(DISTINCT {{id: ip.name, name: ip.name}}),
+                    ratings: COLLECT(DISTINCT rating.rankgroup)
+                }} AS RawFilterData
                 """
             else:
                 filter_query = f"""
@@ -494,100 +480,122 @@ class CompleteBackendFilterService:
                 OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
                 OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
                 
-                WITH 
-                    COLLECT(DISTINCT c.sales_region) AS raw_sales_regions,
-                    COLLECT(DISTINCT c.channel) AS raw_channels,
-                    COLLECT(DISTINCT p.asset_class) AS raw_asset_classes,
-                    COLLECT(DISTINCT c.pca) AS raw_company_pcas,
-                    COLLECT(DISTINCT c.aca) AS raw_company_acas,
-                    COLLECT(DISTINCT cons.pca) AS raw_consultant_pcas,
-                    COLLECT(DISTINCT cons.consultant_advisor) AS raw_consultant_advisors,
-                    COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
-                    COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}) AS consultants,
-                    COLLECT(DISTINCT {{id: fc.name, name: fc.name}}) AS field_consultants,
-                    COLLECT(DISTINCT {{id: c.name, name: c.name}}) AS companies,
-                    COLLECT(DISTINCT {{id: p.name, name: p.name}}) AS products,
-                    COLLECT(DISTINCT rating.rankgroup) AS raw_ratings
-                
                 RETURN {{
-                    markets: [item IN raw_sales_regions WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
-                    channels: [item IN raw_channels WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
-                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
-                    consultants: [item IN consultants WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    companies: [item IN companies WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    products: [item IN products WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
-                    client_advisors: raw_company_pcas + raw_company_acas,
-                    consultant_advisors: raw_consultant_pcas + raw_consultant_advisors,
-                    ratings: [item IN raw_ratings WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
-                    mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
-                    influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
-                }} AS FilterOptions
+                    raw_sales_regions: COLLECT(DISTINCT c.sales_region),
+                    raw_channels: COLLECT(DISTINCT c.channel),
+                    raw_asset_classes: COLLECT(DISTINCT p.asset_class),
+                    raw_company_pcas: COLLECT(DISTINCT c.pca),
+                    raw_company_acas: COLLECT(DISTINCT c.aca),
+                    raw_consultant_pcas: COLLECT(DISTINCT cons.pca),
+                    raw_consultant_advisors: COLLECT(DISTINCT cons.consultant_advisor),
+                    consultants: COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
+                                COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}),
+                    field_consultants: COLLECT(DISTINCT {{id: fc.name, name: fc.name}}),
+                    companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
+                    products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
+                    ratings: COLLECT(DISTINCT rating.rankgroup)
+                }} AS RawFilterData
                 """
             
-            print(f"Executing cleaned filter options query for region: {region}")
+            print(f"Executing simplified filter options query for region: {region}")
             result = session.run(filter_query, {"region": region})
             record = result.single()
             
-            if record and record['FilterOptions']:
-                options = record['FilterOptions']
-                print(f"Raw filter options retrieved: {len(options)} filter types")
+            if record and record['RawFilterData']:
+                raw_data = record['RawFilterData']
+                print(f"Raw filter data retrieved, processing in Python...")
                 
-                # ENHANCED CLEANING LOGIC
+                # Python-based flattening and cleaning
                 cleaned_options = {}
                 
-                for key, value in options.items():
-                    if isinstance(value, list):
-                        if key in ['consultants', 'field_consultants', 'companies', 'products', 'incumbent_products']:
-                            # Entity lists - clean and deduplicate
-                            cleaned_entities = []
-                            seen_names = set()
-                            
-                            for item in value:
-                                if item and isinstance(item, dict) and item.get('name'):
-                                    name = str(item['name']).strip()
-                                    if name and name not in seen_names and not self._is_malformed_name(name):
-                                        seen_names.add(name)
-                                        cleaned_entities.append({'id': name, 'name': name})
-                            
-                            cleaned_options[key] = cleaned_entities[:MAX_FILTER_RESULTS]
-                            
-                        elif key in ['client_advisors', 'consultant_advisors', 'markets', 'channels', 'asset_classes', 'ratings']:
-                            # Advisor and string lists - clean, split, and deduplicate
-                            cleaned_values = set()
-                            
-                            for item in value:
-                                if item:
-                                    # Convert to string and clean
-                                    str_item = str(item).strip()
-                                    if str_item and not self._is_malformed_value(str_item):
-                                        # Handle comma-separated values
-                                        if ',' in str_item:
-                                            parts = [p.strip() for p in str_item.split(',')]
-                                            for part in parts:
-                                                if part and not self._is_malformed_value(part):
-                                                    cleaned_values.add(part)
-                                        else:
-                                            cleaned_values.add(str_item)
-                            
-                            cleaned_options[key] = sorted(list(cleaned_values))[:MAX_FILTER_RESULTS]
-                            
-                        else:
-                            # Static lists - pass through as is
-                            cleaned_options[key] = value
-                    else:
-                        cleaned_options[key] = value
+                # Flatten array fields
+                cleaned_options['markets'] = self._flatten_and_clean_array(raw_data.get('raw_sales_regions', []))
+                cleaned_options['channels'] = self._flatten_and_clean_array(raw_data.get('raw_channels', []))
+                cleaned_options['asset_classes'] = self._flatten_and_clean_array(raw_data.get('raw_asset_classes', []))
+                cleaned_options['client_advisors'] = self._flatten_and_clean_array(
+                    raw_data.get('raw_company_pcas', []) + raw_data.get('raw_company_acas', [])
+                )
+                cleaned_options['consultant_advisors'] = self._flatten_and_clean_array(
+                    raw_data.get('raw_consultant_pcas', []) + raw_data.get('raw_consultant_advisors', [])
+                )
+                cleaned_options['ratings'] = self._flatten_and_clean_array(raw_data.get('ratings', []))
                 
-                print(f"Cleaned filter options: {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in cleaned_options.items()]}")
+                # Clean entity lists (already properly formatted from Neo4j)
+                cleaned_options['consultants'] = self._clean_entity_list(raw_data.get('consultants', []))
+                cleaned_options['field_consultants'] = self._clean_entity_list(raw_data.get('field_consultants', []))
+                cleaned_options['companies'] = self._clean_entity_list(raw_data.get('companies', []))
+                cleaned_options['products'] = self._clean_entity_list(raw_data.get('products', []))
+                
+                if recommendations_mode:
+                    cleaned_options['incumbent_products'] = self._clean_entity_list(raw_data.get('incumbent_products', []))
+                
+                # Static options
+                cleaned_options['mandate_statuses'] = ['Active', 'At Risk', 'Conversion in Progress']
+                cleaned_options['influence_levels'] = ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
+                
+                print(f"Python processing complete: {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in cleaned_options.items()]}")
                 return cleaned_options
                 
             else:
-                print("No FilterOptions found, returning empty options")
+                print("No RawFilterData found, returning empty options")
                 return self._empty_filter_options(recommendations_mode)
                 
         except Exception as e:
-            print(f"ERROR in filter options cleaning: {str(e)}")
+            print(f"ERROR in Python-based filter options processing: {str(e)}")
             return self._empty_filter_options(recommendations_mode)
+
+    def _flatten_and_clean_array(self, raw_array: List[Any]) -> List[str]:
+        """Flatten mixed string/array data and clean it."""
+        flattened = set()
+        
+        for item in raw_array:
+            if item is None:
+                continue
+            
+            # Handle different data types
+            if isinstance(item, list):
+                # If it's already an array, flatten it
+                for sub_item in item:
+                    if sub_item and str(sub_item).strip():
+                        cleaned = str(sub_item).strip()
+                        if not self._is_malformed_value(cleaned):
+                            # Handle comma-separated values
+                            if ',' in cleaned:
+                                for part in cleaned.split(','):
+                                    part = part.strip()
+                                    if part and not self._is_malformed_value(part):
+                                        flattened.add(part)
+                            else:
+                                flattened.add(cleaned)
+            else:
+                # Handle string values
+                if str(item).strip():
+                    cleaned = str(item).strip()
+                    if not self._is_malformed_value(cleaned):
+                        # Handle comma-separated values
+                        if ',' in cleaned:
+                            for part in cleaned.split(','):
+                                part = part.strip()
+                                if part and not self._is_malformed_value(part):
+                                    flattened.add(part)
+                        else:
+                            flattened.add(cleaned)
+        
+        return sorted(list(flattened))[:MAX_FILTER_RESULTS]
+
+    def _clean_entity_list(self, entity_list: List[Dict]) -> List[Dict]:
+        """Clean entity lists (consultants, companies, etc.)."""
+        cleaned_entities = []
+        seen_names = set()
+        
+        for item in entity_list:
+            if item and isinstance(item, dict) and item.get('name'):
+                name = str(item['name']).strip()
+                if name and name not in seen_names and not self._is_malformed_name(name):
+                    seen_names.add(name)
+                    cleaned_entities.append({'id': name, 'name': name})
+        
+        return cleaned_entities[:MAX_FILTER_RESULTS]
 
     def _is_malformed_name(self, name: str) -> bool:
         """Check if a name is malformed and should be excluded."""
