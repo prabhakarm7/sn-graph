@@ -140,7 +140,6 @@ class CompleteBackendFilterService:
             params['consultantAdvisorIds'] = filters['consultantAdvisorIds']
         if filters.get('ratings'):
             params['ratings'] = filters['ratings']
-        # NEW: Add missing filter parameters
         if filters.get('influence_levels'):
             params['influenceLevels'] = filters['influence_levels']
         if filters.get('markets'):
@@ -150,7 +149,8 @@ class CompleteBackendFilterService:
         
         # COMPLETE helper functions for ALL filter conditions
         def build_company_conditions(company_var: str) -> List[str]:
-            conditions = [f"{company_var}.region = $region"]
+            # FIXED: Handle both string and array region formats
+            conditions = [f"({company_var}.region = $region OR $region IN {company_var}.region)"]
             
             if filters.get('clientIds'):
                 conditions.append(f"{company_var}.name IN $clientIds")
@@ -158,7 +158,6 @@ class CompleteBackendFilterService:
                 conditions.append(f"{company_var}.channel IN $channels")
             if filters.get('sales_regions'):
                 conditions.append(f"{company_var}.sales_region IN $salesRegions")
-            # NEW: Markets filter (same as sales_regions but different parameter name)
             if filters.get('markets'):
                 conditions.append(f"{company_var}.sales_region IN $markets")
             if filters.get('clientAdvisorIds'):
@@ -204,7 +203,6 @@ class CompleteBackendFilterService:
                 conditions.append(f"{rating_var}.rankgroup IN $ratings")
             return conditions
         
-        # NEW: Complete influence level filtering
         def build_influence_conditions(rel_var: str) -> List[str]:
             conditions = []
             if filters.get('influence_levels'):
@@ -229,13 +227,13 @@ class CompleteBackendFilterService:
                 build_product_conditions('p'),
                 build_field_consultant_conditions('b'),
                 build_mandate_conditions('h1'),
-                build_influence_conditions('f1'),  # Influence on EMPLOYS relationship
-                build_influence_conditions('i1')   # Influence on COVERS relationship
+                build_influence_conditions('f1'),
+                build_influence_conditions('i1')
             ])}
             OPTIONAL MATCH (a)-[j1:RATES]->(p)
             WHERE {combine_conditions([
                 build_rating_conditions('j1'),
-                build_influence_conditions('j1')   # Influence on RATES relationship
+                build_influence_conditions('j1')
             ])}
             
             // Path 2: Consultant -> Company -> Incumbent Product -> Product (direct coverage)
@@ -246,12 +244,12 @@ class CompleteBackendFilterService:
                 build_consultant_conditions('a2'),
                 build_product_conditions('p2'),
                 build_mandate_conditions('h2'),
-                build_influence_conditions('i2')   # Influence on COVERS relationship
+                build_influence_conditions('i2')
             ])}
             OPTIONAL MATCH (a2)-[j2:RATES]->(p2)
             WHERE {combine_conditions([
                 build_rating_conditions('j2'),
-                build_influence_conditions('j2')   # Influence on RATES relationship
+                build_influence_conditions('j2')
             ])}
             
             // Path 3: Direct consultant ratings with recommendation chain
@@ -260,7 +258,7 @@ class CompleteBackendFilterService:
                 build_consultant_conditions('a3'),
                 build_product_conditions('p3'),
                 build_rating_conditions('j3'),
-                build_influence_conditions('j3')   # Influence on RATES relationship
+                build_influence_conditions('j3')
             ])}
             OPTIONAL MATCH (p3)<-[r3:BI_RECOMMENDS]-(ip3:INCUMBENT_PRODUCT)<-[h3:OWNS]-(c3:COMPANY)
             WHERE {combine_conditions([
@@ -296,8 +294,18 @@ class CompleteBackendFilterService:
             WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
                  all_rels, ratings_map
             
+            // ADDED: Remove orphan nodes - only keep nodes that have connections
+            WITH [node IN filteredNodes WHERE EXISTS {{
+                MATCH (node)-[]-() 
+                WHERE ANY(rel IN all_rels WHERE 
+                    (startNode(rel) = node OR endNode(rel) = node) AND
+                    startNode(rel) IN filteredNodes AND 
+                    endNode(rel) IN filteredNodes
+                )
+            }}] AS connectedNodes, all_rels, ratings_map
+            
             RETURN {{
-                nodes: [node IN filteredNodes | {{
+                nodes: [node IN connectedNodes | {{
                     id: node.id,
                     type: labels(node)[0],
                     data: node {{
@@ -309,7 +317,8 @@ class CompleteBackendFilterService:
                     }}
                 }}],
                 relationships: [rel IN all_rels WHERE rel IS NOT NULL AND
-                               startNode(rel) IN filteredNodes AND endNode(rel) IN filteredNodes AND AND type(rel) <> 'RATES' {{
+                               startNode(rel) IN connectedNodes AND endNode(rel) IN connectedNodes AND 
+                               type(rel) <> 'RATES' | {{
                     id: toString(id(rel)),
                     source: startNode(rel).id,
                     target: endNode(rel).id,
@@ -333,13 +342,13 @@ class CompleteBackendFilterService:
                 build_product_conditions('p'),
                 build_field_consultant_conditions('b'),
                 build_mandate_conditions('g1'),
-                build_influence_conditions('f1'),  # Influence on EMPLOYS relationship
-                build_influence_conditions('i1')   # Influence on COVERS relationship
+                build_influence_conditions('f1'),
+                build_influence_conditions('i1')
             ])}
             OPTIONAL MATCH (a)-[j1:RATES]->(p)
             WHERE {combine_conditions([
                 build_rating_conditions('j1'),
-                build_influence_conditions('j1')   # Influence on RATES relationship
+                build_influence_conditions('j1')
             ])}
             
             // Path 2: Consultant -> Company -> Product (direct coverage)
@@ -349,12 +358,12 @@ class CompleteBackendFilterService:
                 build_consultant_conditions('a2'),
                 build_product_conditions('p2'),
                 build_mandate_conditions('g2'),
-                build_influence_conditions('i2')   # Influence on COVERS relationship
+                build_influence_conditions('i2')
             ])}
             OPTIONAL MATCH (a2)-[j2:RATES]->(p2)
             WHERE {combine_conditions([
                 build_rating_conditions('j2'),
-                build_influence_conditions('j2')   # Influence on RATES relationship
+                build_influence_conditions('j2')
             ])}
             
             // Path 3: Direct consultant to product ratings
@@ -363,7 +372,7 @@ class CompleteBackendFilterService:
                 build_consultant_conditions('a3'),
                 build_product_conditions('p3'),
                 build_rating_conditions('j3'),
-                build_influence_conditions('j3')   # Influence on RATES relationship
+                build_influence_conditions('j3')
             ])}
             OPTIONAL MATCH (p3)<-[g3:OWNS]-(c3:COMPANY)
             WHERE {combine_conditions([
@@ -405,8 +414,18 @@ class CompleteBackendFilterService:
             WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
                  all_rels, ratings_map
             
+            // ADDED: Remove orphan nodes - only keep nodes that have connections
+            WITH [node IN filteredNodes WHERE EXISTS {{
+                MATCH (node)-[]-() 
+                WHERE ANY(rel IN all_rels WHERE 
+                    (startNode(rel) = node OR endNode(rel) = node) AND
+                    startNode(rel) IN filteredNodes AND 
+                    endNode(rel) IN filteredNodes
+                )
+            }}] AS connectedNodes, all_rels, ratings_map
+            
             RETURN {{
-                nodes: [node IN filteredNodes | {{
+                nodes: [node IN connectedNodes | {{
                     id: node.id,
                     type: labels(node)[0],
                     data: node {{
@@ -418,7 +437,8 @@ class CompleteBackendFilterService:
                     }}
                 }}],
                 relationships: [rel IN all_rels WHERE rel IS NOT NULL AND
-                               startNode(rel) IN filteredNodes AND endNode(rel) IN filteredNodes AND type(rel) <> 'RATES' | {{
+                               startNode(rel) IN connectedNodes AND endNode(rel) IN connectedNodes AND 
+                               type(rel) <> 'RATES' | {{
                     id: toString(id(rel)),
                     source: startNode(rel).id,
                     target: endNode(rel).id,
@@ -434,6 +454,117 @@ class CompleteBackendFilterService:
             """
         
         return complete_query, params
+    
+    def _get_complete_filter_options(
+        self, 
+        session: Session, 
+        region: str, 
+        recommendations_mode: bool
+    ) -> Dict[str, Any]:
+        """Get ALL filter options in single optimized query - FIXED for both environments."""
+        
+        if recommendations_mode:
+            filter_query = f"""
+            MATCH (c:COMPANY) WHERE (c.region = '{region}' OR '{region}' IN c.region)
+            OPTIONAL MATCH (c)-[:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
+            OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
+            OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
+            OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
+            
+            WITH c, ip, p, cons, cons2, fc, 
+                 // Parse PCA/ACA server-side
+                 CASE WHEN c.pca CONTAINS ',' 
+                      THEN [x IN split(c.pca, ',') | trim(x)] 
+                      ELSE [c.pca] END AS company_pcas,
+                 CASE WHEN c.aca CONTAINS ',' 
+                      THEN [x IN split(c.aca, ',') | trim(x)] 
+                      ELSE [c.aca] END AS company_acas,
+                 CASE WHEN cons.pca CONTAINS ',' 
+                      THEN [x IN split(cons.pca, ',') | trim(x)] 
+                      ELSE [cons.pca] END AS consultant_pcas,
+                 CASE WHEN cons.consultant_advisor CONTAINS ',' 
+                      THEN [x IN split(cons.consultant_advisor, ',') | trim(x)] 
+                      ELSE [cons.consultant_advisor] END AS consultant_advisors,
+                 rating.rankgroup AS rating_value
+            
+            RETURN {{
+                markets: COLLECT(DISTINCT c.sales_region),
+                channels: COLLECT(DISTINCT c.channel),
+                asset_classes: COLLECT(DISTINCT p.asset_class),
+                consultants: COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
+                            COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}),
+                field_consultants: COLLECT(DISTINCT {{id: fc.name, name: fc.name}}),
+                companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
+                products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
+                incumbent_products: COLLECT(DISTINCT {{id: ip.name, name: ip.name}}),
+                client_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT company_pcas) | 
+                                       acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
+                                reduce(acc = [], aca_list IN COLLECT(DISTINCT company_acas) | 
+                                       acc + [item IN aca_list WHERE item IS NOT NULL AND item <> '']),
+                consultant_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT consultant_pcas) | 
+                                           acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
+                                    reduce(acc = [], advisor_list IN COLLECT(DISTINCT consultant_advisors) | 
+                                           acc + [item IN advisor_list WHERE item IS NOT NULL AND item <> '']),
+                ratings: COLLECT(DISTINCT rating_value),
+                mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
+                influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
+            }} AS FilterOptions
+            """
+        else:
+            filter_query = f"""
+            MATCH (c:COMPANY) WHERE (c.region = '{region}' OR '{region}' IN c.region)
+            OPTIONAL MATCH (c)-[:OWNS]->(p:PRODUCT)
+            OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
+            OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
+            OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
+            
+            WITH c, p, cons, cons2, fc,
+                 CASE WHEN c.pca CONTAINS ',' 
+                      THEN [x IN split(c.pca, ',') | trim(x)] 
+                      ELSE [c.pca] END AS company_pcas,
+                 CASE WHEN c.aca CONTAINS ',' 
+                      THEN [x IN split(c.aca, ',') | trim(x)] 
+                      ELSE [c.aca] END AS company_acas,
+                 rating.rankgroup AS rating_value
+            
+            RETURN {{
+                markets: COLLECT(DISTINCT c.sales_region),
+                channels: COLLECT(DISTINCT c.channel), 
+                asset_classes: COLLECT(DISTINCT p.asset_class),
+                consultants: COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
+                            COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}),
+                field_consultants: COLLECT(DISTINCT {{id: fc.name, name: fc.name}}),
+                companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
+                products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
+                client_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT company_pcas) | 
+                                       acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
+                                reduce(acc = [], aca_list IN COLLECT(DISTINCT company_acas) | 
+                                       acc + [item IN aca_list WHERE item IS NOT NULL AND item <> '']),
+                ratings: COLLECT(DISTINCT rating_value),
+                mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
+                influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
+            }} AS FilterOptions
+            """
+        
+        result = session.run(filter_query)
+        record = result.single()
+        
+        if record and record['FilterOptions']:
+            options = record['FilterOptions']
+            # Clean and limit results
+            for key, value in options.items():
+                if isinstance(value, list):
+                    if key in ['client_advisors', 'consultant_advisors']:
+                        options[key] = list(set([v for v in value if v and v.strip()]))[:MAX_FILTER_RESULTS]
+                    elif key in ['consultants', 'field_consultants', 'companies', 'products', 'incumbent_products']:
+                        options[key] = [item for item in value if item and item.get('name')][:MAX_FILTER_RESULTS]
+                    else:
+                        options[key] = [v for v in value if v][:MAX_FILTER_RESULTS]
+            
+            return options
+        
+        return self._empty_filter_options(recommendations_mode)
+    
     
     def _calculate_layout_positions(self, nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Calculate layout positions server-side - no client-side Dagre needed."""
