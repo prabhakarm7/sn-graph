@@ -149,40 +149,59 @@ class CompleteBackendFilterService:
         
         # COMPLETE helper functions for ALL filter conditions
         def build_company_conditions(company_var: str) -> List[str]:
-            # FIXED: Handle both string and array region formats
             conditions = [f"({company_var}.region = $region OR $region IN {company_var}.region)"]
             
             if filters.get('clientIds'):
                 conditions.append(f"{company_var}.name IN $clientIds")
+                
+            # Handle channels (string OR array)
             if filters.get('channels'):
-                conditions.append(f"{company_var}.channel IN $channels")
+                conditions.append(f"""ANY(ch IN $channels WHERE 
+                    ch = {company_var}.channel OR ch IN {company_var}.channel)""")
+                
+            # Handle sales_regions (string OR array)
             if filters.get('sales_regions'):
-                conditions.append(f"{company_var}.sales_region IN $salesRegions")
+                conditions.append(f"""ANY(sr IN $salesRegions WHERE 
+                    sr = {company_var}.sales_region OR sr IN {company_var}.sales_region)""")
+                
+            # Handle markets (same as sales_regions)
             if filters.get('markets'):
-                conditions.append(f"{company_var}.sales_region IN $markets")
+                conditions.append(f"""ANY(mkt IN $markets WHERE 
+                    mkt = {company_var}.sales_region OR mkt IN {company_var}.sales_region)""")
+                
+            # Handle PCA/ACA (string OR array)
             if filters.get('clientAdvisorIds'):
-                conditions.append(f"""({company_var}.pca IN $clientAdvisorIds OR {company_var}.aca IN $clientAdvisorIds OR
-                    ANY(advisor IN $clientAdvisorIds WHERE advisor IN split(coalesce({company_var}.pca, ''), ',')) OR
-                    ANY(advisor IN $clientAdvisorIds WHERE advisor IN split(coalesce({company_var}.aca, ''), ',')))""")
+                conditions.append(f"""ANY(advisor IN $clientAdvisorIds WHERE 
+                    advisor = {company_var}.pca OR advisor IN {company_var}.pca OR
+                    advisor = {company_var}.aca OR advisor IN {company_var}.aca)""")
             
             return conditions
         
         def build_consultant_conditions(consultant_var: str) -> List[str]:
             conditions = []
+            
             if filters.get('consultantIds'):
                 conditions.append(f"{consultant_var}.name IN $consultantIds")
+                
+            # Handle consultant advisors (string OR array)
             if filters.get('consultantAdvisorIds'):
-                conditions.append(f"""({consultant_var}.pca IN $consultantAdvisorIds OR {consultant_var}.consultant_advisor IN $consultantAdvisorIds OR
-                    ANY(advisor IN $consultantAdvisorIds WHERE advisor IN split(coalesce({consultant_var}.pca, ''), ',')) OR
-                    ANY(advisor IN $consultantAdvisorIds WHERE advisor IN split(coalesce({consultant_var}.consultant_advisor, ''), ',')))""")
+                conditions.append(f"""ANY(advisor IN $consultantAdvisorIds WHERE 
+                    advisor = {consultant_var}.pca OR advisor IN {consultant_var}.pca OR
+                    advisor = {consultant_var}.consultant_advisor OR advisor IN {consultant_var}.consultant_advisor)""")
+                
             return conditions
         
         def build_product_conditions(product_var: str) -> List[str]:
             conditions = []
+            
             if filters.get('productIds'):
                 conditions.append(f"{product_var}.name IN $productIds")
+                
+            # Handle asset classes (might be string OR array)
             if filters.get('assetClasses'):
-                conditions.append(f"{product_var}.asset_class IN $assetClasses")
+                conditions.append(f"""ANY(ac IN $assetClasses WHERE 
+                    ac = {product_var}.asset_class OR ac IN {product_var}.asset_class)""")
+                
             return conditions
         
         def build_field_consultant_conditions(fc_var: str) -> List[str]:
@@ -194,19 +213,22 @@ class CompleteBackendFilterService:
         def build_mandate_conditions(rel_var: str) -> List[str]:
             conditions = []
             if filters.get('mandateStatuses'):
-                conditions.append(f"{rel_var}.mandate_status IN $mandateStatuses")
+                conditions.append(f"""ANY(ms IN $mandateStatuses WHERE 
+                    ms = {rel_var}.mandate_status OR ms IN {rel_var}.mandate_status)""")
             return conditions
         
         def build_rating_conditions(rating_var: str) -> List[str]:
             conditions = []
             if filters.get('ratings'):
-                conditions.append(f"{rating_var}.rankgroup IN $ratings")
+                conditions.append(f"""ANY(rt IN $ratings WHERE 
+                    rt = {rating_var}.rankgroup OR rt IN {rating_var}.rankgroup)""")
             return conditions
         
         def build_influence_conditions(rel_var: str) -> List[str]:
             conditions = []
             if filters.get('influence_levels'):
-                conditions.append(f"{rel_var}.level_of_influence IN $influenceLevels")
+                conditions.append(f"""ANY(il IN $influenceLevels WHERE 
+                    il = {rel_var}.level_of_influence OR il IN {rel_var}.level_of_influence)""")
             return conditions
         
         def combine_conditions(condition_lists: List[List[str]]) -> str:
@@ -461,110 +483,197 @@ class CompleteBackendFilterService:
         region: str, 
         recommendations_mode: bool
     ) -> Dict[str, Any]:
-        """Get ALL filter options in single optimized query - FIXED for both environments."""
+        """Get ALL filter options in single optimized query - FIXED for proper array/string handling."""
         
-        if recommendations_mode:
-            filter_query = f"""
-            MATCH (c:COMPANY) WHERE (c.region = '{region}' OR '{region}' IN c.region)
-            OPTIONAL MATCH (c)-[:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
-            OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
-            OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
-            OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
+        try:
+            if recommendations_mode:
+                filter_query = f"""
+                MATCH (c:COMPANY) WHERE (c.region = $region OR $region IN c.region)
+                OPTIONAL MATCH (c)-[:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
+                OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
+                OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
+                OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
+                
+                // Collect all raw values - handle both strings and arrays properly
+                WITH 
+                    COLLECT(DISTINCT c.sales_region) AS raw_sales_regions,
+                    COLLECT(DISTINCT c.channel) AS raw_channels,
+                    COLLECT(DISTINCT p.asset_class) AS raw_asset_classes,
+                    COLLECT(DISTINCT c.pca) AS raw_company_pcas,
+                    COLLECT(DISTINCT c.aca) AS raw_company_acas,
+                    COLLECT(DISTINCT cons.pca) AS raw_consultant_pcas,
+                    COLLECT(DISTINCT cons.consultant_advisor) AS raw_consultant_advisors,
+                    COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
+                    COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}) AS consultants,
+                    COLLECT(DISTINCT {{id: fc.name, name: fc.name}}) AS field_consultants,
+                    COLLECT(DISTINCT {{id: c.name, name: c.name}}) AS companies,
+                    COLLECT(DISTINCT {{id: p.name, name: p.name}}) AS products,
+                    COLLECT(DISTINCT {{id: ip.name, name: ip.name}}) AS incumbent_products,
+                    COLLECT(DISTINCT rating.rankgroup) AS raw_ratings
+                
+                // Flatten arrays properly - simplified approach without type checking
+                RETURN {{
+                    markets: CASE 
+                        WHEN size(raw_sales_regions) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_sales_regions | 
+                            acc + CASE 
+                                WHEN item IS NULL THEN []
+                                ELSE [item]
+                            END)
+                        END,
+                    channels: CASE 
+                        WHEN size(raw_channels) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_channels | 
+                            acc + CASE 
+                                WHEN item IS NULL THEN []
+                                ELSE [item]
+                            END)
+                        END,
+                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL],
+                    consultants: [item IN consultants WHERE item.name IS NOT NULL],
+                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL],
+                    companies: [item IN companies WHERE item.name IS NOT NULL],
+                    products: [item IN products WHERE item.name IS NOT NULL],
+                    incumbent_products: [item IN incumbent_products WHERE item.name IS NOT NULL],
+                    client_advisors: CASE 
+                        WHEN size(raw_company_pcas + raw_company_acas) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_company_pcas + raw_company_acas | 
+                            acc + CASE 
+                                WHEN item IS NULL THEN []
+                                ELSE [item]
+                            END)
+                        END,
+                    consultant_advisors: CASE 
+                        WHEN size(raw_consultant_pcas + raw_consultant_advisors) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_consultant_pcas + raw_consultant_advisors | 
+                            acc + CASE 
+                                WHEN item IS NULL THEN []
+                                ELSE [item]
+                            END)
+                        END,
+                    ratings: [item IN raw_ratings WHERE item IS NOT NULL],
+                    mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
+                    influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
+                }} AS FilterOptions
+                """
+            else:
+                filter_query = f"""
+                MATCH (c:COMPANY) WHERE (c.region = $region OR $region IN c.region)
+                OPTIONAL MATCH (c)-[:OWNS]->(p:PRODUCT)
+                OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
+                OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
+                OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
+                
+                WITH 
+                    COLLECT(DISTINCT c.sales_region) AS raw_sales_regions,
+                    COLLECT(DISTINCT c.channel) AS raw_channels,
+                    COLLECT(DISTINCT p.asset_class) AS raw_asset_classes,
+                    COLLECT(DISTINCT c.pca) AS raw_company_pcas,
+                    COLLECT(DISTINCT c.aca) AS raw_company_acas,
+                    COLLECT(DISTINCT cons.pca) AS raw_consultant_pcas,
+                    COLLECT(DISTINCT cons.consultant_advisor) AS raw_consultant_advisors,
+                    COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
+                    COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}) AS consultants,
+                    COLLECT(DISTINCT {{id: fc.name, name: fc.name}}) AS field_consultants,
+                    COLLECT(DISTINCT {{id: c.name, name: c.name}}) AS companies,
+                    COLLECT(DISTINCT {{id: p.name, name: p.name}}) AS products,
+                    COLLECT(DISTINCT rating.rankgroup) AS raw_ratings
+                
+                RETURN {{
+                    markets: CASE 
+                        WHEN size(raw_sales_regions) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_sales_regions | 
+                            acc + CASE 
+                                WHEN item IS NULL THEN []
+                                ELSE [item]
+                            END)
+                        END,
+                    channels: CASE 
+                        WHEN size(raw_channels) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_channels | 
+                            acc + CASE 
+                                WHEN item IS NULL THEN []
+                                ELSE [item]
+                            END)
+                        END,
+                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL],
+                    consultants: [item IN consultants WHERE item.name IS NOT NULL],
+                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL],
+                    companies: [item IN companies WHERE item.name IS NOT NULL],
+                    products: [item IN products WHERE item.name IS NOT NULL],
+                    client_advisors: CASE 
+                        WHEN size(raw_company_pcas + raw_company_acas) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_company_pcas + raw_company_acas | 
+                            acc + CASE 
+                                WHEN item IS NULL THEN []
+                                ELSE [item]
+                            END)
+                        END,
+                    consultant_advisors: CASE 
+                        WHEN size(raw_consultant_pcas + raw_consultant_advisors) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_consultant_pcas + raw_consultant_advisors | 
+                            acc + CASE 
+                                WHEN item IS NULL THEN []
+                                ELSE [item]
+                            END)
+                        END,
+                    ratings: [item IN raw_ratings WHERE item IS NOT NULL],
+                    mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
+                    influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
+                }} AS FilterOptions
+                """
             
-            WITH c, ip, p, cons, cons2, fc, 
-                 // Parse PCA/ACA server-side
-                 CASE WHEN c.pca CONTAINS ',' 
-                      THEN [x IN split(c.pca, ',') | trim(x)] 
-                      ELSE [c.pca] END AS company_pcas,
-                 CASE WHEN c.aca CONTAINS ',' 
-                      THEN [x IN split(c.aca, ',') | trim(x)] 
-                      ELSE [c.aca] END AS company_acas,
-                 CASE WHEN cons.pca CONTAINS ',' 
-                      THEN [x IN split(cons.pca, ',') | trim(x)] 
-                      ELSE [cons.pca] END AS consultant_pcas,
-                 CASE WHEN cons.consultant_advisor CONTAINS ',' 
-                      THEN [x IN split(cons.consultant_advisor, ',') | trim(x)] 
-                      ELSE [cons.consultant_advisor] END AS consultant_advisors,
-                 rating.rankgroup AS rating_value
+            print(f"Executing filter options query for region: {region}, recommendations_mode: {recommendations_mode}")
             
-            RETURN {{
-                markets: COLLECT(DISTINCT c.sales_region),
-                channels: COLLECT(DISTINCT c.channel),
-                asset_classes: COLLECT(DISTINCT p.asset_class),
-                consultants: COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
-                            COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}),
-                field_consultants: COLLECT(DISTINCT {{id: fc.name, name: fc.name}}),
-                companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
-                products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
-                incumbent_products: COLLECT(DISTINCT {{id: ip.name, name: ip.name}}),
-                client_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT company_pcas) | 
-                                       acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
-                                reduce(acc = [], aca_list IN COLLECT(DISTINCT company_acas) | 
-                                       acc + [item IN aca_list WHERE item IS NOT NULL AND item <> '']),
-                consultant_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT consultant_pcas) | 
-                                           acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
-                                    reduce(acc = [], advisor_list IN COLLECT(DISTINCT consultant_advisors) | 
-                                           acc + [item IN advisor_list WHERE item IS NOT NULL AND item <> '']),
-                ratings: COLLECT(DISTINCT rating_value),
-                mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
-                influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
-            }} AS FilterOptions
-            """
-        else:
-            filter_query = f"""
-            MATCH (c:COMPANY) WHERE (c.region = '{region}' OR '{region}' IN c.region)
-            OPTIONAL MATCH (c)-[:OWNS]->(p:PRODUCT)
-            OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
-            OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
-            OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
+            # Use parameterized query for safety
+            result = session.run(filter_query, {"region": region})
+            record = result.single()
             
-            WITH c, p, cons, cons2, fc,
-                 CASE WHEN c.pca CONTAINS ',' 
-                      THEN [x IN split(c.pca, ',') | trim(x)] 
-                      ELSE [c.pca] END AS company_pcas,
-                 CASE WHEN c.aca CONTAINS ',' 
-                      THEN [x IN split(c.aca, ',') | trim(x)] 
-                      ELSE [c.aca] END AS company_acas,
-                 rating.rankgroup AS rating_value
+            if record and record['FilterOptions']:
+                options = record['FilterOptions']
+                print(f"Raw filter options retrieved: {len(options)} filter types")
+                
+                # Clean and limit results
+                for key, value in options.items():
+                    if isinstance(value, list):
+                        if key in ['client_advisors', 'consultant_advisors']:
+                            # Remove duplicates and empty values for advisor lists
+                            # Handle potential comma-separated values in database
+                            flattened_values = []
+                            for v in value:
+                                if v and str(v).strip():
+                                    # If it contains comma, split it
+                                    if ',' in str(v):
+                                        flattened_values.extend([item.strip() for item in str(v).split(',') if item.strip()])
+                                    else:
+                                        flattened_values.append(str(v).strip())
+                            options[key] = list(set(flattened_values))[:MAX_FILTER_RESULTS]
+                        elif key in ['consultants', 'field_consultants', 'companies', 'products', 'incumbent_products']:
+                            # Entity lists - remove nulls and limit
+                            options[key] = [item for item in value if item and item.get('name')][:MAX_FILTER_RESULTS]
+                        else:
+                            # Simple lists - remove nulls and limit
+                            options[key] = [v for v in value if v][:MAX_FILTER_RESULTS]
+                
+                print(f"Cleaned filter options: {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in options.items()]}")
+                return options
+            else:
+                print("No FilterOptions found in query result, returning empty options")
+                return self._empty_filter_options(recommendations_mode)
+                
+        except Exception as e:
+            print(f"ERROR in _get_complete_filter_options: {str(e)}")
+            print(f"Region: {region}, recommendations_mode: {recommendations_mode}")
             
-            RETURN {{
-                markets: COLLECT(DISTINCT c.sales_region),
-                channels: COLLECT(DISTINCT c.channel), 
-                asset_classes: COLLECT(DISTINCT p.asset_class),
-                consultants: COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
-                            COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}),
-                field_consultants: COLLECT(DISTINCT {{id: fc.name, name: fc.name}}),
-                companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
-                products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
-                client_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT company_pcas) | 
-                                       acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
-                                reduce(acc = [], aca_list IN COLLECT(DISTINCT company_acas) | 
-                                       acc + [item IN aca_list WHERE item IS NOT NULL AND item <> '']),
-                ratings: COLLECT(DISTINCT rating_value),
-                mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
-                influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
-            }} AS FilterOptions
-            """
-        
-        result = session.run(filter_query)
-        record = result.single()
-        
-        if record and record['FilterOptions']:
-            options = record['FilterOptions']
-            # Clean and limit results
-            for key, value in options.items():
-                if isinstance(value, list):
-                    if key in ['client_advisors', 'consultant_advisors']:
-                        options[key] = list(set([v for v in value if v and v.strip()]))[:MAX_FILTER_RESULTS]
-                    elif key in ['consultants', 'field_consultants', 'companies', 'products', 'incumbent_products']:
-                        options[key] = [item for item in value if item and item.get('name')][:MAX_FILTER_RESULTS]
-                    else:
-                        options[key] = [v for v in value if v][:MAX_FILTER_RESULTS]
-            
-            return options
-        
-        return self._empty_filter_options(recommendations_mode)
-    
+            # Return empty options with error info
+            empty_options = self._empty_filter_options(recommendations_mode)
+            empty_options['_error'] = {
+                'message': str(e),
+                'region': region,
+                'recommendations_mode': recommendations_mode,
+                'timestamp': time.time()
+            }
+            return empty_options    
     
     def _calculate_layout_positions(self, nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Calculate layout positions server-side - no client-side Dagre needed."""
@@ -609,121 +718,7 @@ class CompleteBackendFilterService:
         
         return positioned_nodes
     
-    def _get_complete_filter_options(
-        self, 
-        session: Session, 
-        region: str, 
-        recommendations_mode: bool
-    ) -> Dict[str, Any]:
-        """Get ALL filter options in single optimized query."""
-        
-        if recommendations_mode:
-            filter_query = f"""
-            MATCH (c:COMPANY) WHERE c.region = '{region}'
-            OPTIONAL MATCH (c)-[:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
-            OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
-            OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
-            OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
-            
-            WITH c, ip, p, cons, cons2, fc, 
-                 // Parse PCA/ACA server-side
-                 CASE WHEN c.pca CONTAINS ',' 
-                      THEN [x IN split(c.pca, ',') | trim(x)] 
-                      ELSE [c.pca] END AS company_pcas,
-                 CASE WHEN c.aca CONTAINS ',' 
-                      THEN [x IN split(c.aca, ',') | trim(x)] 
-                      ELSE [c.aca] END AS company_acas,
-                 CASE WHEN cons.pca CONTAINS ',' 
-                      THEN [x IN split(cons.pca, ',') | trim(x)] 
-                      ELSE [cons.pca] END AS consultant_pcas,
-                 CASE WHEN cons.consultant_advisor CONTAINS ',' 
-                      THEN [x IN split(cons.consultant_advisor, ',') | trim(x)] 
-                      ELSE [cons.consultant_advisor] END AS consultant_advisors,
-                 rating.rankgroup AS rating_value
-            
-            RETURN {{
-                markets: COLLECT(DISTINCT c.sales_region),
-                channels: COLLECT(DISTINCT c.channel),
-                asset_classes: COLLECT(DISTINCT p.asset_class),
-                consultants: COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
-                            COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}),
-                field_consultants: COLLECT(DISTINCT {{id: fc.name, name: fc.name}}),
-                companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
-                products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
-                incumbent_products: COLLECT(DISTINCT {{id: ip.name, name: ip.name}}),
-                // Flattened PCA/ACA values
-                client_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT company_pcas) | 
-                                       acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
-                                reduce(acc = [], aca_list IN COLLECT(DISTINCT company_acas) | 
-                                       acc + [item IN aca_list WHERE item IS NOT NULL AND item <> '']),
-                consultant_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT consultant_pcas) | 
-                                           acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
-                                    reduce(acc = [], advisor_list IN COLLECT(DISTINCT consultant_advisors) | 
-                                           acc + [item IN advisor_list WHERE item IS NOT NULL AND item <> '']),
-                ratings: COLLECT(DISTINCT rating_value),
-                mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
-                influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
-            }} AS FilterOptions
-            """
-        else:
-            filter_query = f"""
-            MATCH (c:COMPANY) WHERE c.region = '{region}'
-            OPTIONAL MATCH (c)-[:OWNS]->(p:PRODUCT)
-            OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
-            OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
-            OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
-            
-            WITH c, p, cons, cons2, fc,
-                 // Parse PCA/ACA server-side  
-                 CASE WHEN c.pca CONTAINS ',' 
-                      THEN [x IN split(c.pca, ',') | trim(x)] 
-                      ELSE [c.pca] END AS company_pcas,
-                 CASE WHEN c.aca CONTAINS ',' 
-                      THEN [x IN split(c.aca, ',') | trim(x)] 
-                      ELSE [c.aca] END AS company_acas,
-                 rating.rankgroup AS rating_value
-            
-            RETURN {{
-                markets: COLLECT(DISTINCT c.sales_region),
-                channels: COLLECT(DISTINCT c.channel), 
-                asset_classes: COLLECT(DISTINCT p.asset_class),
-                consultants: COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
-                            COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}),
-                field_consultants: COLLECT(DISTINCT {{id: fc.name, name: fc.name}}),
-                companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
-                products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
-                client_advisors: reduce(acc = [], pca_list IN COLLECT(DISTINCT company_pcas) | 
-                                       acc + [item IN pca_list WHERE item IS NOT NULL AND item <> '']) +
-                                reduce(acc = [], aca_list IN COLLECT(DISTINCT company_acas) | 
-                                       acc + [item IN aca_list WHERE item IS NOT NULL AND item <> '']),
-                ratings: COLLECT(DISTINCT rating_value),
-                mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
-                influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
-            }} AS FilterOptions
-            """
-        
-        result = session.run(filter_query)
-        record = result.single()
-        
-        if record and record['FilterOptions']:
-            options = record['FilterOptions']
-            # Clean and limit results
-            for key, value in options.items():
-                if isinstance(value, list):
-                    if key in ['client_advisors', 'consultant_advisors']:
-                        # Remove duplicates and empty values
-                        options[key] = list(set([v for v in value if v and v.strip()]))[:MAX_FILTER_RESULTS]
-                    elif key in ['consultants', 'field_consultants', 'companies', 'products', 'incumbent_products']:
-                        # Entity lists - remove nulls and limit
-                        options[key] = [item for item in value if item.get('name')][:MAX_FILTER_RESULTS]
-                    else:
-                        # Simple lists - remove nulls and limit
-                        options[key] = [v for v in value if v][:MAX_FILTER_RESULTS]
-            
-            return options
-        
-        return self._empty_filter_options(recommendations_mode)
-    
+
     def _create_summary_response(
         self, 
         region: str, 
