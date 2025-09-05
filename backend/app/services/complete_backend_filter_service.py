@@ -116,11 +116,11 @@ class CompleteBackendFilterService:
         filters: Dict[str, Any],
         recommendations_mode: bool
     ) -> Tuple[str, Dict[str, Any]]:
-        """Build single optimized query with ALL filters implemented - REVERT TO WORKING VERSION."""
+        """Fixed Neo4j query - proper aggregation syntax."""
         
         params = {"region": region}
         
-        # Add ALL filter parameters upfront (same as before)
+        # Add filter parameters (same as before)
         if filters.get('consultantIds'):
             params['consultantIds'] = filters['consultantIds']
         if filters.get('clientIds'):
@@ -148,27 +148,23 @@ class CompleteBackendFilterService:
         if filters.get('markets'):
             params['markets'] = filters['markets']
         
-        print(f"Building COMPLETE query with ALL filters: {filters}")
+        print(f"Building FIXED query with filters: {filters}")
         
-        # COMPLETE helper functions for ALL filter conditions (same as your working version)
+        # Helper functions (same as your working version)
         def build_company_conditions(company_var: str) -> List[str]:
             conditions = [f"({company_var}.region = $region OR $region IN {company_var}.region)"]
             
             if filters.get('clientIds'):
                 conditions.append(f"{company_var}.name IN $clientIds")
-                
             if filters.get('channels'):
                 conditions.append(f"""ANY(ch IN $channels WHERE 
                     ch = {company_var}.channel OR ch IN {company_var}.channel)""")
-                
             if filters.get('sales_regions'):
                 conditions.append(f"""ANY(sr IN $salesRegions WHERE 
                     sr = {company_var}.sales_region OR sr IN {company_var}.sales_region)""")
-                
             if filters.get('markets'):
                 conditions.append(f"""ANY(mkt IN $markets WHERE 
                     mkt = {company_var}.sales_region OR mkt IN {company_var}.sales_region)""")
-                
             if filters.get('clientAdvisorIds'):
                 conditions.append(f"""ANY(advisor IN $clientAdvisorIds WHERE 
                     advisor = {company_var}.pca OR advisor IN {company_var}.pca OR
@@ -178,27 +174,21 @@ class CompleteBackendFilterService:
         
         def build_consultant_conditions(consultant_var: str) -> List[str]:
             conditions = []
-            
             if filters.get('consultantIds'):
                 conditions.append(f"{consultant_var}.name IN $consultantIds")
-                
             if filters.get('consultantAdvisorIds'):
                 conditions.append(f"""ANY(advisor IN $consultantAdvisorIds WHERE 
                     advisor = {consultant_var}.pca OR advisor IN {consultant_var}.pca OR
                     advisor = {consultant_var}.consultant_advisor OR advisor IN {consultant_var}.consultant_advisor)""")
-                
             return conditions
         
         def build_product_conditions(product_var: str) -> List[str]:
             conditions = []
-            
             if filters.get('productIds'):
                 conditions.append(f"{product_var}.name IN $productIds")
-                
             if filters.get('assetClasses'):
                 conditions.append(f"""ANY(ac IN $assetClasses WHERE 
                     ac = {product_var}.asset_class OR ac IN {product_var}.asset_class)""")
-                
             return conditions
         
         def build_field_consultant_conditions(fc_var: str) -> List[str]:
@@ -214,13 +204,6 @@ class CompleteBackendFilterService:
                     ms = {rel_var}.mandate_status OR ms IN {rel_var}.mandate_status)""")
             return conditions
         
-        def build_rating_conditions(rating_var: str) -> List[str]:
-            conditions = []
-            if filters.get('ratings'):
-                conditions.append(f"""ANY(rt IN $ratings WHERE 
-                    rt = {rating_var}.rankgroup OR rt IN {rating_var}.rankgroup)""")
-            return conditions
-        
         def build_influence_conditions(rel_var: str) -> List[str]:
             conditions = []
             if filters.get('influence_levels'):
@@ -234,9 +217,9 @@ class CompleteBackendFilterService:
                 all_conditions.extend(condition_list)
             return " AND ".join(all_conditions) if all_conditions else "true"
         
-        # REVERT TO YOUR ORIGINAL WORKING QUERY STRUCTURE
+        # REVERT TO WORKING STRUCTURE - No complex aggregation mixing
         if recommendations_mode:
-            complete_query = f"""
+            optimized_query = f"""
             // Path 1: Consultant -> Field Consultant -> Company -> Incumbent Product -> Product
             OPTIONAL MATCH path1 = (a:CONSULTANT)-[f1:EMPLOYS]->(b:FIELD_CONSULTANT)-[i1:COVERS]->(c:COMPANY)
                 -[h1:OWNS]->(ip:INCUMBENT_PRODUCT)-[r1:BI_RECOMMENDS]->(p:PRODUCT)
@@ -249,11 +232,6 @@ class CompleteBackendFilterService:
                 build_influence_conditions('f1'),
                 build_influence_conditions('i1')
             ])}
-            OPTIONAL MATCH (a)-[j1:RATES]->(p)
-            WHERE {combine_conditions([
-                build_rating_conditions('j1'),
-                build_influence_conditions('j1')
-            ])}
             
             // Path 2: Consultant -> Company -> Incumbent Product -> Product (direct coverage)
             OPTIONAL MATCH path2 = (a2:CONSULTANT)-[i2:COVERS]->(c2:COMPANY)
@@ -265,59 +243,35 @@ class CompleteBackendFilterService:
                 build_mandate_conditions('h2'),
                 build_influence_conditions('i2')
             ])}
-            OPTIONAL MATCH (a2)-[j2:RATES]->(p2)
-            WHERE {combine_conditions([
-                build_rating_conditions('j2'),
-                build_influence_conditions('j2')
-            ])}
             
-            // Path 3: Direct consultant ratings with recommendation chain
-            OPTIONAL MATCH path3 = (a3:CONSULTANT)-[j3:RATES]->(p3:PRODUCT)
-            WHERE {combine_conditions([
-                build_consultant_conditions('a3'),
-                build_product_conditions('p3'),
-                build_rating_conditions('j3'),
-                build_influence_conditions('j3')
-            ])}
-            OPTIONAL MATCH (p3)<-[r3:BI_RECOMMENDS]-(ip3:INCUMBENT_PRODUCT)<-[h3:OWNS]-(c3:COMPANY)
+            // Path 3: Company-only paths for incumbent products
+            OPTIONAL MATCH path3 = (c3:COMPANY)-[h3:OWNS]->(ip3:INCUMBENT_PRODUCT)-[r3:BI_RECOMMENDS]->(p3:PRODUCT)
             WHERE {combine_conditions([
                 build_company_conditions('c3'),
+                build_product_conditions('p3'),
                 build_mandate_conditions('h3')
             ])}
             
+            // FIXED: Simple collection without mixing aggregations
             WITH 
-                COLLECT(DISTINCT a) + COLLECT(DISTINCT a2) + COLLECT(DISTINCT a3) AS consultants,
+                COLLECT(DISTINCT a) + COLLECT(DISTINCT a2) AS consultants,
                 COLLECT(DISTINCT b) AS field_consultants,
                 COLLECT(DISTINCT c) + COLLECT(DISTINCT c2) + COLLECT(DISTINCT c3) AS companies,
                 COLLECT(DISTINCT ip) + COLLECT(DISTINCT ip2) + COLLECT(DISTINCT ip3) AS incumbent_products,
                 COLLECT(DISTINCT p) + COLLECT(DISTINCT p2) + COLLECT(DISTINCT p3) AS products,
                 COLLECT(DISTINCT f1) + COLLECT(DISTINCT i1) + COLLECT(DISTINCT i2) + 
                 COLLECT(DISTINCT h1) + COLLECT(DISTINCT h2) + COLLECT(DISTINCT h3) + 
-                COLLECT(DISTINCT r1) + COLLECT(DISTINCT r2) + COLLECT(DISTINCT r3) + 
-                COLLECT(DISTINCT j1) + COLLECT(DISTINCT j2) + COLLECT(DISTINCT j3) AS all_rels
+                COLLECT(DISTINCT r1) + COLLECT(DISTINCT r2) + COLLECT(DISTINCT r3) AS all_rels
             
-            WITH consultants + field_consultants + companies + incumbent_products + products AS allNodes, all_rels
+            WITH consultants + field_consultants + companies + incumbent_products + products AS allNodes, 
+                all_rels
             
-            // Collect ratings for products server-side
-            UNWIND allNodes AS node
-            OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(node)
-            WHERE 'PRODUCT' IN labels(node) OR 'INCUMBENT_PRODUCT' IN labels(node)
-            
-            WITH node, COLLECT({{consultant: rating_consultant.name, rankgroup: rating_rel.rankgroup}}) AS node_ratings, allNodes, all_rels
-            
-            WITH COLLECT({{
-                node_id: node.id,
-                ratings: [r IN node_ratings WHERE r.consultant IS NOT NULL | r]
-            }}) AS ratings_map, allNodes, all_rels
-            
+            // Filter out nulls and invalid nodes
             WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
-                all_rels, ratings_map
-            
-            // SIMPLIFIED: Just pass through nodes - orphan removal will be done in post-processing
-            WITH filteredNodes AS connectedNodes, all_rels, ratings_map
+                [rel IN all_rels WHERE rel IS NOT NULL] AS filteredRels
             
             RETURN {{
-                nodes: [node IN connectedNodes | {{
+                nodes: [node IN filteredNodes | {{
                     id: node.id,
                     type: labels(node)[0],
                     data: {{
@@ -331,12 +285,10 @@ class CompleteBackendFilterService:
                         pca: node.pca,
                         aca: node.aca,
                         consultant_advisor: node.consultant_advisor,
-                        mandate_status: node.mandate_status,
-                        ratings: [rm IN ratings_map WHERE rm.node_id = node.id | rm.ratings][0]
+                        mandate_status: node.mandate_status
                     }}
                 }}],
-                relationships: [rel IN all_rels WHERE rel IS NOT NULL AND 
-                            type(rel) <> 'RATES' | {{
+                relationships: [rel IN filteredRels WHERE type(rel) <> 'RATES' | {{
                     id: toString(id(rel)),
                     source: startNode(rel).id,
                     target: endNode(rel).id,
@@ -346,14 +298,13 @@ class CompleteBackendFilterService:
                         sourceId: startNode(rel).id,
                         targetId: endNode(rel).id,
                         mandate_status: rel.mandate_status,
-                        level_of_influence: rel.level_of_influence,
-                        rankgroup: rel.rankgroup
+                        level_of_influence: rel.level_of_influence
                     }}
                 }}]
             }} AS GraphData
             """
         else:
-            complete_query = f"""
+            optimized_query = f"""
             // Path 1: Consultant -> Field Consultant -> Company -> Product
             OPTIONAL MATCH path1 = (a:CONSULTANT)-[f1:EMPLOYS]->(b:FIELD_CONSULTANT)-[i1:COVERS]->(c:COMPANY)-[g1:OWNS]->(p:PRODUCT)
             WHERE {combine_conditions([
@@ -365,11 +316,6 @@ class CompleteBackendFilterService:
                 build_influence_conditions('f1'),
                 build_influence_conditions('i1')
             ])}
-            OPTIONAL MATCH (a)-[j1:RATES]->(p)
-            WHERE {combine_conditions([
-                build_rating_conditions('j1'),
-                build_influence_conditions('j1')
-            ])}
             
             // Path 2: Consultant -> Company -> Product (direct coverage)
             OPTIONAL MATCH path2 = (a2:CONSULTANT)-[i2:COVERS]->(c2:COMPANY)-[g2:OWNS]->(p2:PRODUCT)
@@ -380,65 +326,30 @@ class CompleteBackendFilterService:
                 build_mandate_conditions('g2'),
                 build_influence_conditions('i2')
             ])}
-            OPTIONAL MATCH (a2)-[j2:RATES]->(p2)
-            WHERE {combine_conditions([
-                build_rating_conditions('j2'),
-                build_influence_conditions('j2')
-            ])}
             
-            // Path 3: Direct consultant to product ratings
-            OPTIONAL MATCH path3 = (a3:CONSULTANT)-[j3:RATES]->(p3:PRODUCT)
-            WHERE {combine_conditions([
-                build_consultant_conditions('a3'),
-                build_product_conditions('p3'),
-                build_rating_conditions('j3'),
-                build_influence_conditions('j3')
-            ])}
-            OPTIONAL MATCH (p3)<-[g3:OWNS]-(c3:COMPANY)
+            // Path 3: Company-product only relationships
+            OPTIONAL MATCH path3 = (c3:COMPANY)-[g3:OWNS]->(p3:PRODUCT)
             WHERE {combine_conditions([
                 build_company_conditions('c3'),
+                build_product_conditions('p3'),
                 build_mandate_conditions('g3')
             ])}
             
-            // Path 4: Company-product only relationships
-            OPTIONAL MATCH path4 = (c4:COMPANY)-[g4:OWNS]->(p4:PRODUCT)
-            WHERE {combine_conditions([
-                build_company_conditions('c4'),
-                build_product_conditions('p4'),
-                build_mandate_conditions('g4')
-            ])}
-            
             WITH 
-                COLLECT(DISTINCT a) + COLLECT(DISTINCT a2) + COLLECT(DISTINCT a3) AS consultants,
+                COLLECT(DISTINCT a) + COLLECT(DISTINCT a2) AS consultants,
                 COLLECT(DISTINCT b) AS field_consultants,
-                COLLECT(DISTINCT c) + COLLECT(DISTINCT c2) + COLLECT(DISTINCT c3) + COLLECT(DISTINCT c4) AS companies,
-                COLLECT(DISTINCT p) + COLLECT(DISTINCT p2) + COLLECT(DISTINCT p3) + COLLECT(DISTINCT p4) AS products,
+                COLLECT(DISTINCT c) + COLLECT(DISTINCT c2) + COLLECT(DISTINCT c3) AS companies,
+                COLLECT(DISTINCT p) + COLLECT(DISTINCT p2) + COLLECT(DISTINCT p3) AS products,
                 COLLECT(DISTINCT f1) + COLLECT(DISTINCT i1) + COLLECT(DISTINCT i2) + 
-                COLLECT(DISTINCT g1) + COLLECT(DISTINCT g2) + COLLECT(DISTINCT g3) + COLLECT(DISTINCT g4) + 
-                COLLECT(DISTINCT j1) + COLLECT(DISTINCT j2) + COLLECT(DISTINCT j3) AS all_rels
+                COLLECT(DISTINCT g1) + COLLECT(DISTINCT g2) + COLLECT(DISTINCT g3) AS all_rels
             
             WITH consultants + field_consultants + companies + products AS allNodes, all_rels
             
-            // Collect ratings for products server-side
-            UNWIND allNodes AS node
-            OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(node)
-            WHERE 'PRODUCT' IN labels(node)
-            
-            WITH node, COLLECT({{consultant: rating_consultant.name, rankgroup: rating_rel.rankgroup}}) AS node_ratings, allNodes, all_rels
-            
-            WITH COLLECT({{
-                node_id: node.id,
-                ratings: [r IN node_ratings WHERE r.consultant IS NOT NULL | r]
-            }}) AS ratings_map, allNodes, all_rels
-            
             WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
-                all_rels, ratings_map
-            
-            // SIMPLIFIED: Just pass through nodes - orphan removal will be done in post-processing  
-            WITH filteredNodes AS connectedNodes, all_rels, ratings_map
+                [rel IN all_rels WHERE rel IS NOT NULL] AS filteredRels
             
             RETURN {{
-                nodes: [node IN connectedNodes | {{
+                nodes: [node IN filteredNodes | {{
                     id: node.id,
                     type: labels(node)[0],
                     data: {{
@@ -452,12 +363,10 @@ class CompleteBackendFilterService:
                         pca: node.pca,
                         aca: node.aca,
                         consultant_advisor: node.consultant_advisor,
-                        mandate_status: node.mandate_status,
-                        ratings: [rm IN ratings_map WHERE rm.node_id = node.id | rm.ratings][0]
+                        mandate_status: node.mandate_status
                     }}
                 }}],
-                relationships: [rel IN all_rels WHERE rel IS NOT NULL AND
-                            type(rel) <> 'RATES' | {{
+                relationships: [rel IN filteredRels WHERE type(rel) <> 'RATES' | {{
                     id: toString(id(rel)),
                     source: startNode(rel).id,
                     target: endNode(rel).id,
@@ -467,14 +376,66 @@ class CompleteBackendFilterService:
                         sourceId: startNode(rel).id,
                         targetId: endNode(rel).id,
                         mandate_status: rel.mandate_status,
-                        level_of_influence: rel.level_of_influence,
-                        rankgroup: rel.rankgroup
+                        level_of_influence: rel.level_of_influence
                     }}
                 }}]
             }} AS GraphData
             """
         
-        return complete_query, params
+        return optimized_query, params
+
+    def get_ratings_for_nodes(
+        self, 
+        session: Session, 
+        node_ids: List[str], 
+        filters: Dict[str, Any] = None
+    ) -> Dict[str, List[Dict]]:
+        """Separate optimized rating collection."""
+        
+        if not node_ids:
+            return {}
+        
+        rating_conditions = []
+        params = {"node_ids": node_ids}
+        
+        if filters and filters.get('ratings'):
+            rating_conditions.append("rating_rel.rankgroup IN $ratings")
+            params['ratings'] = filters['ratings']
+        
+        if filters and filters.get('influence_levels'):
+            rating_conditions.append("rating_rel.level_of_influence IN $influence_levels")
+            params['influence_levels'] = filters['influence_levels']
+        
+        where_clause = ""
+        if rating_conditions:
+            where_clause = "AND " + " AND ".join(rating_conditions)
+        
+        rating_query = f"""
+        MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(target_node)
+        WHERE target_node.id IN $node_ids 
+        AND ('PRODUCT' IN labels(target_node) OR 'INCUMBENT_PRODUCT' IN labels(target_node))
+        {where_clause}
+        
+        RETURN target_node.id AS node_id, 
+            COLLECT({{consultant: rating_consultant.name, rankgroup: rating_rel.rankgroup}}) AS ratings
+        """
+        
+        try:
+            result = session.run(rating_query, params)
+            ratings_map = {}
+            
+            for record in result:
+                node_id = record['node_id']
+                ratings = [r for r in record['ratings'] if r['consultant']]
+                if ratings:
+                    ratings_map[node_id] = ratings
+            
+            print(f"Collected ratings for {len(ratings_map)} nodes")
+            return ratings_map
+            
+        except Exception as e:
+            print(f"Error collecting ratings: {str(e)}")
+            return {}
     
     def _get_complete_filter_options(
         self, 
@@ -1164,52 +1125,70 @@ class CompleteBackendFilterService:
         else:
             return f"Dataset size ({total_nodes} nodes) is optimal for visualization."
 
-    def get_complete_filtered_data_with_enhanced_stats(
+    def get_complete_filtered_data(
         self, 
         region: str,
         filters: Dict[str, Any] = None,
         recommendations_mode: bool = False
     ) -> Dict[str, Any]:
-        """Enhanced version of main method that includes detailed statistics."""
-        
+        """
+        OPTIMIZED MAIN METHOD: Get completely processed data with separate rating collection.
+        """
         filters = filters or {}
         region = region.upper()
         
         try:
             with self.driver.session() as session:
-                # Get filter options with embedded stats (single query)
-                enhanced_options = self._get_complete_filter_options_with_stats(
-                    session, region, recommendations_mode
-                )
-                
-                stats = enhanced_options.get('statistics', {})
-                filter_options = enhanced_options.get('filter_options', {})
-                
-                # Check if we need to proceed with full data query based on stats
-                total_nodes = stats.get('total_nodes', 0)
-                
-                if total_nodes > MAX_GRAPH_NODES:
-                    return self._create_enhanced_summary_response(
-                        region, total_nodes, filters, recommendations_mode, stats
-                    )
-                
-                # Proceed with full data query if size is acceptable
+                # Step 1: Build and execute optimized main query (no ratings)
                 query, params = self._build_complete_query(region, filters, recommendations_mode)
+                print(f"Executing optimized backend query for {region}")
                 
-                print(f"Executing full data query with {total_nodes} expected nodes")
                 result = session.run(query, params)
                 records = list(result)
                 
                 if not records:
-                    return self._empty_response_with_stats(region, recommendations_mode, stats)
+                    return self._empty_response(region, recommendations_mode)
                 
                 graph_data = records[0]['GraphData']
                 nodes = graph_data.get('nodes', [])
                 relationships = graph_data.get('relationships', [])
                 
-                # Calculate layout positions
+                print(f"Main query complete: {len(nodes)} nodes, {len(relationships)} relationships")
+                
+                # Step 2: Post-processing orphan removal
+                nodes, relationships = self._remove_orphans_post_processing(nodes, relationships)
+                
+                # Step 3: Collect ratings separately for product nodes only
+                product_node_ids = [
+                    node['id'] for node in nodes 
+                    if node['type'] in ['PRODUCT', 'INCUMBENT_PRODUCT']
+                ]
+                
+                ratings_map = {}
+                if product_node_ids:
+                    print(f"Collecting ratings for {len(product_node_ids)} product nodes")
+                    ratings_map = self.get_ratings_for_nodes(session, product_node_ids, filters)
+                
+                # Step 4: Merge ratings into nodes
+                for node in nodes:
+                    if node['id'] in ratings_map:
+                        node['data']['ratings'] = ratings_map[node['id']]
+                    else:
+                        node['data']['ratings'] = []
+                
+                print(f"Processing complete: {len(nodes)} nodes, {len(relationships)} relationships, {len(ratings_map)} nodes with ratings")
+                
+                # Step 5: Check performance limits
+                if len(nodes) > MAX_GRAPH_NODES:
+                    return self._create_summary_response(region, len(nodes), filters, recommendations_mode)
+                
+                # Step 6: Calculate layout positions
                 positioned_nodes = self._calculate_layout_positions(nodes)
                 
+                # Step 7: Get filter options
+                filter_options = self._get_complete_filter_options(session, region, recommendations_mode)
+                
+                # Step 8: Return complete response
                 return {
                     "success": True,
                     "render_mode": "graph",
@@ -1220,29 +1199,31 @@ class CompleteBackendFilterService:
                         "total_relationships": len(relationships)
                     },
                     "filter_options": filter_options,
-                    "statistics": {
-                        **stats,
-                        "actual_nodes_returned": len(nodes),
-                        "actual_relationships_returned": len(relationships),
-                        "filters_applied_count": len([k for k, v in filters.items() if v]),
-                        "data_reduction_ratio": round((1 - len(nodes) / max(total_nodes, 1)) * 100, 1) if total_nodes > 0 else 0
-                    },
                     "metadata": {
                         "region": region,
                         "mode": "recommendations" if recommendations_mode else "standard",
                         "server_side_processing": True,
                         "filters_applied": filters,
                         "processing_time_ms": int(time.time() * 1000),
-                        "performance_level": stats.get('performance_level', 'unknown')
+                        "optimizations": [
+                            "Optimized query structure",
+                            "Separate rating collection",
+                            "Post-processing orphan removal", 
+                            "Pre-calculated layouts",
+                            "Progressive node collection"
+                        ],
+                        "performance_stats": {
+                            "nodes_with_ratings": len(ratings_map),
+                            "rating_collection_optimized": True
+                        }
                     }
                 }
                 
         except Exception as e:
             return {
                 "success": False,
-                "error": f"Enhanced processing failed: {str(e)}",
-                "render_mode": "error",
-                "statistics": {"error": str(e)}
+                "error": f"Optimized backend processing failed: {str(e)}",
+                "render_mode": "error"
             }
 
     def _create_enhanced_summary_response(
