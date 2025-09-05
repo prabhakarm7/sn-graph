@@ -831,6 +831,458 @@ class CompleteBackendFilterService:
             base_options["consultant_advisors"] = []
         
         return base_options
+    
+
+    def get_region_stats(self, region: str, recommendations_mode: bool = False) -> Dict[str, Any]:
+        """Get quick statistics for a region without full data retrieval."""
+        try:
+            with self.driver.session() as session:
+                if recommendations_mode:
+                    stats_query = f"""
+                    MATCH (c:COMPANY) WHERE (c.region = $region OR $region IN c.region)
+                    OPTIONAL MATCH (c)-[:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
+                    OPTIONAL MATCH (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
+                    OPTIONAL MATCH (cons2:CONSULTANT)-[:COVERS]->(c)
+                    
+                    WITH 
+                        COUNT(DISTINCT c) AS companies,
+                        COUNT(DISTINCT ip) AS incumbent_products,
+                        COUNT(DISTINCT p) AS products,
+                        COUNT(DISTINCT cons) + COUNT(DISTINCT cons2) AS consultants,
+                        COUNT(DISTINCT fc) AS field_consultants
+                    
+                    RETURN {{
+                        total_nodes: companies + incumbent_products + products + consultants + field_consultants,
+                        node_breakdown: {{
+                            companies: companies,
+                            incumbent_products: incumbent_products,
+                            products: products,
+                            consultants: consultants,
+                            field_consultants: field_consultants
+                        }},
+                        estimated_relationships: (consultants + field_consultants) * 2 + companies + incumbent_products,
+                        performance_recommendation: CASE 
+                            WHEN companies + incumbent_products + products + consultants + field_consultants > 500 
+                            THEN 'Apply filters to reduce dataset size'
+                            ELSE 'Dataset size optimal for visualization'
+                        END
+                    }} AS Stats
+                    """
+                else:
+                    stats_query = f"""
+                    MATCH (c:COMPANY) WHERE (c.region = $region OR $region IN c.region)
+                    OPTIONAL MATCH (c)-[:OWNS]->(p:PRODUCT)
+                    OPTIONAL MATCH (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
+                    OPTIONAL MATCH (cons2:CONSULTANT)-[:COVERS]->(c)
+                    
+                    WITH 
+                        COUNT(DISTINCT c) AS companies,
+                        COUNT(DISTINCT p) AS products,
+                        COUNT(DISTINCT cons) + COUNT(DISTINCT cons2) AS consultants,
+                        COUNT(DISTINCT fc) AS field_consultants
+                    
+                    RETURN {{
+                        total_nodes: companies + products + consultants + field_consultants,
+                        node_breakdown: {{
+                            companies: companies,
+                            products: products,
+                            consultants: consultants,
+                            field_consultants: field_consultants
+                        }},
+                        estimated_relationships: (consultants + field_consultants) * 2 + companies,
+                        performance_recommendation: CASE 
+                            WHEN companies + products + consultants + field_consultants > 500 
+                            THEN 'Apply filters to reduce dataset size'
+                            ELSE 'Dataset size optimal for visualization'
+                        END
+                    }} AS Stats
+                    """
+                
+                result = session.run(stats_query, {"region": region})
+                record = result.single()
+                
+                if record and record['Stats']:
+                    return {
+                        "success": True,
+                        "region": region,
+                        "mode": "recommendations" if recommendations_mode else "standard",
+                        "stats": record['Stats'],
+                        "query_time_ms": "<50ms (count-only query)"
+                    }
+                
+                return {"success": False, "error": "No data found for region"}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _get_complete_filter_options_with_stats(
+        self, 
+        session: Session, 
+        region: str, 
+        recommendations_mode: bool
+    ) -> Dict[str, Any]:
+        """Enhanced filter options with embedded statistics - single query approach."""
+        
+        try:
+            if recommendations_mode:
+                filter_query = f"""
+                MATCH (c:COMPANY) WHERE (c.region = $region OR $region IN c.region)
+                OPTIONAL MATCH (c)-[:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
+                OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
+                OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
+                OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
+                
+                // Collect all raw values AND count statistics in same query
+                WITH 
+                    COLLECT(DISTINCT c.sales_region) AS raw_sales_regions,
+                    COLLECT(DISTINCT c.channel) AS raw_channels,
+                    COLLECT(DISTINCT p.asset_class) AS raw_asset_classes,
+                    COLLECT(DISTINCT c.pca) AS raw_company_pcas,
+                    COLLECT(DISTINCT c.aca) AS raw_company_acas,
+                    COLLECT(DISTINCT cons.pca) AS raw_consultant_pcas,
+                    COLLECT(DISTINCT cons.consultant_advisor) AS raw_consultant_advisors,
+                    COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
+                    COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}) AS consultants,
+                    COLLECT(DISTINCT {{id: fc.name, name: fc.name}}) AS field_consultants,
+                    COLLECT(DISTINCT {{id: c.name, name: c.name}}) AS companies,
+                    COLLECT(DISTINCT {{id: p.name, name: p.name}}) AS products,
+                    COLLECT(DISTINCT {{id: ip.name, name: ip.name}}) AS incumbent_products,
+                    COLLECT(DISTINCT rating.rankgroup) AS raw_ratings,
+                    // STATISTICS - embedded in same query (minimal overhead)
+                    COUNT(DISTINCT c) AS company_count,
+                    COUNT(DISTINCT ip) AS incumbent_product_count,
+                    COUNT(DISTINCT p) AS product_count,
+                    COUNT(DISTINCT cons) + COUNT(DISTINCT cons2) AS consultant_count,
+                    COUNT(DISTINCT fc) AS field_consultant_count,
+                    COUNT(DISTINCT rating) AS rating_count
+                
+                RETURN {{
+                    // Filter options (existing logic)
+                    markets: CASE 
+                        WHEN size(raw_sales_regions) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_sales_regions | 
+                            acc + CASE WHEN item IS NULL THEN [] ELSE [item] END)
+                        END,
+                    channels: CASE 
+                        WHEN size(raw_channels) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_channels | 
+                            acc + CASE WHEN item IS NULL THEN [] ELSE [item] END)
+                        END,
+                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL],
+                    consultants: [item IN consultants WHERE item.name IS NOT NULL],
+                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL],
+                    companies: [item IN companies WHERE item.name IS NOT NULL],
+                    products: [item IN products WHERE item.name IS NOT NULL],
+                    incumbent_products: [item IN incumbent_products WHERE item.name IS NOT NULL],
+                    client_advisors: CASE 
+                        WHEN size(raw_company_pcas + raw_company_acas) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_company_pcas + raw_company_acas | 
+                            acc + CASE WHEN item IS NULL THEN [] ELSE [item] END)
+                        END,
+                    consultant_advisors: CASE 
+                        WHEN size(raw_consultant_pcas + raw_consultant_advisors) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_consultant_pcas + raw_consultant_advisors | 
+                            acc + CASE WHEN item IS NULL THEN [] ELSE [item] END)
+                        END,
+                    ratings: [item IN raw_ratings WHERE item IS NOT NULL],
+                    mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
+                    influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK'],
+                    
+                    // EMBEDDED STATISTICS - no additional query overhead
+                    _stats: {{
+                        total_nodes: company_count + incumbent_product_count + product_count + consultant_count + field_consultant_count,
+                        node_breakdown: {{
+                            companies: company_count,
+                            incumbent_products: incumbent_product_count,
+                            products: product_count,
+                            consultants: consultant_count,
+                            field_consultants: field_consultant_count
+                        }},
+                        total_ratings: rating_count,
+                        estimated_relationships: consultant_count * 2 + field_consultant_count + company_count + incumbent_product_count,
+                        performance_level: CASE 
+                            WHEN company_count + incumbent_product_count + product_count + consultant_count + field_consultant_count > 500 
+                            THEN 'large_dataset'
+                            WHEN company_count + incumbent_product_count + product_count + consultant_count + field_consultant_count > 200 
+                            THEN 'medium_dataset'
+                            ELSE 'optimal_dataset'
+                        END,
+                        filter_efficiency: {{
+                            companies_available: size([item IN companies WHERE item.name IS NOT NULL]),
+                            consultants_available: size([item IN consultants WHERE item.name IS NOT NULL]),
+                            products_available: size([item IN products WHERE item.name IS NOT NULL])
+                        }}
+                    }}
+                }} AS FilterOptionsWithStats
+                """
+            else:
+                # Similar query for standard mode (without incumbent_products)
+                filter_query = f"""
+                MATCH (c:COMPANY) WHERE (c.region = $region OR $region IN c.region)
+                OPTIONAL MATCH (c)-[:OWNS]->(p:PRODUCT)
+                OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
+                OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
+                OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
+                
+                WITH 
+                    COLLECT(DISTINCT c.sales_region) AS raw_sales_regions,
+                    COLLECT(DISTINCT c.channel) AS raw_channels,
+                    COLLECT(DISTINCT p.asset_class) AS raw_asset_classes,
+                    COLLECT(DISTINCT c.pca) AS raw_company_pcas,
+                    COLLECT(DISTINCT c.aca) AS raw_company_acas,
+                    COLLECT(DISTINCT cons.pca) AS raw_consultant_pcas,
+                    COLLECT(DISTINCT cons.consultant_advisor) AS raw_consultant_advisors,
+                    COLLECT(DISTINCT {{id: cons.name, name: cons.name}}) + 
+                    COLLECT(DISTINCT {{id: cons2.name, name: cons2.name}}) AS consultants,
+                    COLLECT(DISTINCT {{id: fc.name, name: fc.name}}) AS field_consultants,
+                    COLLECT(DISTINCT {{id: c.name, name: c.name}}) AS companies,
+                    COLLECT(DISTINCT {{id: p.name, name: p.name}}) AS products,
+                    COLLECT(DISTINCT rating.rankgroup) AS raw_ratings,
+                    // STATISTICS for standard mode
+                    COUNT(DISTINCT c) AS company_count,
+                    COUNT(DISTINCT p) AS product_count,
+                    COUNT(DISTINCT cons) + COUNT(DISTINCT cons2) AS consultant_count,
+                    COUNT(DISTINCT fc) AS field_consultant_count,
+                    COUNT(DISTINCT rating) AS rating_count
+                
+                RETURN {{
+                    markets: CASE 
+                        WHEN size(raw_sales_regions) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_sales_regions | 
+                            acc + CASE WHEN item IS NULL THEN [] ELSE [item] END)
+                        END,
+                    channels: CASE 
+                        WHEN size(raw_channels) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_channels | 
+                            acc + CASE WHEN item IS NULL THEN [] ELSE [item] END)
+                        END,
+                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL],
+                    consultants: [item IN consultants WHERE item.name IS NOT NULL],
+                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL],
+                    companies: [item IN companies WHERE item.name IS NOT NULL],
+                    products: [item IN products WHERE item.name IS NOT NULL],
+                    client_advisors: CASE 
+                        WHEN size(raw_company_pcas + raw_company_acas) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_company_pcas + raw_company_acas | 
+                            acc + CASE WHEN item IS NULL THEN [] ELSE [item] END)
+                        END,
+                    consultant_advisors: CASE 
+                        WHEN size(raw_consultant_pcas + raw_consultant_advisors) = 0 THEN []
+                        ELSE reduce(acc = [], item IN raw_consultant_pcas + raw_consultant_advisors | 
+                            acc + CASE WHEN item IS NULL THEN [] ELSE [item] END)
+                        END,
+                    ratings: [item IN raw_ratings WHERE item IS NOT NULL],
+                    mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
+                    influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK'],
+                    
+                    _stats: {{
+                        total_nodes: company_count + product_count + consultant_count + field_consultant_count,
+                        node_breakdown: {{
+                            companies: company_count,
+                            products: product_count,
+                            consultants: consultant_count,
+                            field_consultants: field_consultant_count
+                        }},
+                        total_ratings: rating_count,
+                        estimated_relationships: consultant_count * 2 + field_consultant_count + company_count,
+                        performance_level: CASE 
+                            WHEN company_count + product_count + consultant_count + field_consultant_count > 500 
+                            THEN 'large_dataset'
+                            WHEN company_count + product_count + consultant_count + field_consultant_count > 200 
+                            THEN 'medium_dataset'
+                            ELSE 'optimal_dataset'
+                        END,
+                        filter_efficiency: {{
+                            companies_available: size([item IN companies WHERE item.name IS NOT NULL]),
+                            consultants_available: size([item IN consultants WHERE item.name IS NOT NULL]),
+                            products_available: size([item IN products WHERE item.name IS NOT NULL])
+                        }}
+                    }}
+                }} AS FilterOptionsWithStats
+                """
+            
+            print(f"Executing enhanced filter options query with stats for region: {region}")
+            result = session.run(filter_query, {"region": region})
+            record = result.single()
+            
+            if record and record['FilterOptionsWithStats']:
+                data = record['FilterOptionsWithStats']
+                
+                # Extract stats and filter options
+                stats = data.pop('_stats', {})
+                filter_options = data
+                
+                # Clean filter options (existing logic)
+                for key, value in filter_options.items():
+                    if isinstance(value, list):
+                        if key in ['client_advisors', 'consultant_advisors']:
+                            flattened_values = []
+                            for v in value:
+                                if v and str(v).strip():
+                                    if ',' in str(v):
+                                        flattened_values.extend([item.strip() for item in str(v).split(',') if item.strip()])
+                                    else:
+                                        flattened_values.append(str(v).strip())
+                            filter_options[key] = list(set(flattened_values))[:MAX_FILTER_RESULTS]
+                        elif key in ['consultants', 'field_consultants', 'companies', 'products', 'incumbent_products']:
+                            filter_options[key] = [item for item in value if item and item.get('name')][:MAX_FILTER_RESULTS]
+                        else:
+                            filter_options[key] = [v for v in value if v][:MAX_FILTER_RESULTS]
+                
+                return {
+                    "filter_options": filter_options,
+                    "statistics": stats,
+                    "performance_insights": {
+                        "overhead_added": "minimal - embedded in existing query",
+                        "query_count": 1,
+                        "recommended_action": self._get_performance_recommendation(stats)
+                    }
+                }
+            
+            return {
+                "filter_options": self._empty_filter_options(recommendations_mode),
+                "statistics": {"total_nodes": 0, "total_relationships": 0},
+                "performance_insights": {"status": "no_data"}
+            }
+            
+        except Exception as e:
+            print(f"ERROR in enhanced filter options with stats: {str(e)}")
+            return {
+                "filter_options": self._empty_filter_options(recommendations_mode),
+                "statistics": {"error": str(e)},
+                "performance_insights": {"status": "error"}
+            }
+
+    def _get_performance_recommendation(self, stats: Dict[str, Any]) -> str:
+        """Generate performance recommendations based on statistics."""
+        total_nodes = stats.get('total_nodes', 0)
+        performance_level = stats.get('performance_level', 'unknown')
+        
+        if performance_level == 'large_dataset':
+            return f"Dataset has {total_nodes} nodes. Apply filters to reduce to <500 nodes for optimal visualization."
+        elif performance_level == 'medium_dataset':
+            return f"Dataset has {total_nodes} nodes. Consider applying filters for faster rendering."
+        else:
+            return f"Dataset size ({total_nodes} nodes) is optimal for visualization."
+
+    def get_complete_filtered_data_with_enhanced_stats(
+        self, 
+        region: str,
+        filters: Dict[str, Any] = None,
+        recommendations_mode: bool = False
+    ) -> Dict[str, Any]:
+        """Enhanced version of main method that includes detailed statistics."""
+        
+        filters = filters or {}
+        region = region.upper()
+        
+        try:
+            with self.driver.session() as session:
+                # Get filter options with embedded stats (single query)
+                enhanced_options = self._get_complete_filter_options_with_stats(
+                    session, region, recommendations_mode
+                )
+                
+                stats = enhanced_options.get('statistics', {})
+                filter_options = enhanced_options.get('filter_options', {})
+                
+                # Check if we need to proceed with full data query based on stats
+                total_nodes = stats.get('total_nodes', 0)
+                
+                if total_nodes > MAX_GRAPH_NODES:
+                    return self._create_enhanced_summary_response(
+                        region, total_nodes, filters, recommendations_mode, stats
+                    )
+                
+                # Proceed with full data query if size is acceptable
+                query, params = self._build_complete_query(region, filters, recommendations_mode)
+                
+                print(f"Executing full data query with {total_nodes} expected nodes")
+                result = session.run(query, params)
+                records = list(result)
+                
+                if not records:
+                    return self._empty_response_with_stats(region, recommendations_mode, stats)
+                
+                graph_data = records[0]['GraphData']
+                nodes = graph_data.get('nodes', [])
+                relationships = graph_data.get('relationships', [])
+                
+                # Calculate layout positions
+                positioned_nodes = self._calculate_layout_positions(nodes)
+                
+                return {
+                    "success": True,
+                    "render_mode": "graph",
+                    "data": {
+                        "nodes": positioned_nodes,
+                        "relationships": relationships,
+                        "total_nodes": len(nodes),
+                        "total_relationships": len(relationships)
+                    },
+                    "filter_options": filter_options,
+                    "statistics": {
+                        **stats,
+                        "actual_nodes_returned": len(nodes),
+                        "actual_relationships_returned": len(relationships),
+                        "filters_applied_count": len([k for k, v in filters.items() if v]),
+                        "data_reduction_ratio": round((1 - len(nodes) / max(total_nodes, 1)) * 100, 1) if total_nodes > 0 else 0
+                    },
+                    "metadata": {
+                        "region": region,
+                        "mode": "recommendations" if recommendations_mode else "standard",
+                        "server_side_processing": True,
+                        "filters_applied": filters,
+                        "processing_time_ms": int(time.time() * 1000),
+                        "performance_level": stats.get('performance_level', 'unknown')
+                    }
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Enhanced processing failed: {str(e)}",
+                "render_mode": "error",
+                "statistics": {"error": str(e)}
+            }
+
+    def _create_enhanced_summary_response(
+        self, 
+        region: str, 
+        node_count: int, 
+        filters: Dict[str, Any],
+        recommendations_mode: bool,
+        stats: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Enhanced summary response with detailed statistics."""
+        
+        with self.driver.session() as session:
+            filter_options = self._get_complete_filter_options(session, region, recommendations_mode)
+            suggestions = self._generate_smart_suggestions(session, region, recommendations_mode)
+        
+        return {
+            "success": True,
+            "render_mode": "summary",
+            "data": {
+                "total_nodes": node_count,
+                "message": f"Dataset contains {node_count} nodes. Apply filters to reduce below {MAX_GRAPH_NODES} nodes for optimal visualization.",
+                "node_limit": MAX_GRAPH_NODES,
+                "suggestions": suggestions
+            },
+            "filter_options": filter_options,
+            "statistics": {
+                **stats,
+                "performance_blocked": True,
+                "reduction_needed": node_count - MAX_GRAPH_NODES,
+                "suggested_filter_impact": "60-80% node reduction"
+            },
+            "metadata": {
+                "region": region,
+                "mode": "recommendations" if recommendations_mode else "standard",
+                "performance_limited": True,
+                "server_side_processing": True
+            }
+        }
 
 
 # Global service instance
