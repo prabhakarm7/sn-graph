@@ -1,4 +1,4 @@
-// hooks/usePerformanceOptimizedBackendData.ts - Fixed version using existing SimplifiedApiService
+// hooks/usePerformanceOptimizedBackendData.ts - UPDATED with backend filter synchronization
 import { useState, useEffect, useCallback } from 'react';
 import { Node, Edge } from 'reactflow';
 import SimplifiedApiService from '../services/SimplifiedApiService';
@@ -132,6 +132,66 @@ export const usePerformanceOptimizedBackendData = () => {
   
   const apiService = SimplifiedApiService.getInstance();
   
+  // HELPER: Synchronize filters with backend response
+  const synchronizeFiltersWithBackend = useCallback((
+    requestedFilters: FilterCriteria,
+    backendResponse: any
+  ): FilterCriteria => {
+    const backendAppliedFilters = backendResponse?.metadata?.filters_applied || {};
+    
+    console.log('🔄 Synchronizing filters with backend:', {
+      requested: Object.keys(requestedFilters).filter(k => requestedFilters[k as keyof FilterCriteria]),
+      backendApplied: Object.keys(backendAppliedFilters)
+    });
+    
+    // Start with requested filters as base
+    const synchronizedFilters: FilterCriteria = {
+      ...requestedFilters,
+      regions: currentRegions // Always keep current regions
+    };
+    
+    // Override with backend-applied filters where they exist
+    Object.keys(backendAppliedFilters).forEach(key => {
+      const backendValue = backendAppliedFilters[key];
+      if (backendValue !== null && backendValue !== undefined) {
+        // Convert backend filter keys to frontend filter keys if needed
+        const frontendKey = mapBackendFilterKeyToFrontend(key);
+        if (frontendKey && frontendKey in synchronizedFilters) {
+          (synchronizedFilters as any)[frontendKey] = backendValue;
+          
+          // Log discrepancies
+          const requestedValue = (requestedFilters as any)[frontendKey];
+          if (JSON.stringify(requestedValue) !== JSON.stringify(backendValue)) {
+            console.log(`📊 Filter sync: ${frontendKey} changed from`, requestedValue, 'to', backendValue);
+          }
+        }
+      }
+    });
+    
+    return synchronizedFilters;
+  }, [currentRegions]);
+  
+  // HELPER: Map backend filter keys to frontend keys
+  const mapBackendFilterKeyToFrontend = (backendKey: string): string | null => {
+    const keyMap: Record<string, string> = {
+      'consultantIds': 'consultantIds',
+      'fieldConsultantIds': 'fieldConsultantIds', 
+      'clientIds': 'clientIds',
+      'productIds': 'productIds',
+      'incumbentProductIds': 'incumbentProductIds',
+      'clientAdvisorIds': 'clientAdvisorIds',
+      'consultantAdvisorIds': 'consultantAdvisorIds',
+      'channels': 'channels',
+      'assetClasses': 'assetClasses',
+      'mandateStatuses': 'mandateStatuses',
+      'sales_regions': 'sales_regions',
+      'ratings': 'ratings',
+      'influenceLevels': 'influenceLevels'
+    };
+    
+    return keyMap[backendKey] || null;
+  };
+  
   /**
    * STEP 1: Load region filter options only (no graph data)
    */
@@ -168,8 +228,8 @@ export const usePerformanceOptimizedBackendData = () => {
         }
       });
       
-      // Update filters state
-      const updatedFilters: FilterCriteria = {
+      // Update filters state - RESET to defaults for new region
+      const defaultFilters: FilterCriteria = {
         regions,
         nodeTypes: recommendationsMode 
           ? ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT', 'INCUMBENT_PRODUCT']
@@ -192,7 +252,7 @@ export const usePerformanceOptimizedBackendData = () => {
         legacyPcaIds: [],
         mandateStatuses: []
       };
-      setCurrentFilters(updatedFilters);
+      setCurrentFilters(defaultFilters);
       
       console.log('Performance Optimization: Filters loaded, no graph data yet');
       
@@ -215,6 +275,7 @@ export const usePerformanceOptimizedBackendData = () => {
   
   /**
    * STEP 2: Apply filters and load graph data with performance check
+   * UPDATED: Now synchronizes with backend-applied filters
    */
   const applyFilters = useCallback(async (filters: Partial<FilterCriteria>) => {
     console.log('Performance Optimization: Applying filters with performance check');
@@ -228,23 +289,39 @@ export const usePerformanceOptimizedBackendData = () => {
     setError(null);
     
     try {
-      const newFilters: FilterCriteria = {
+      const requestedFilters: FilterCriteria = {
         ...currentFilters,
         ...filters,
         regions: currentRegions
       };
       
-      const recommendationsMode = newFilters.nodeTypes?.includes('INCUMBENT_PRODUCT') || false;
+      const recommendationsMode = requestedFilters.nodeTypes?.includes('INCUMBENT_PRODUCT') || false;
+      
+      console.log('🚀 Requesting filters:', requestedFilters);
       
       // Use existing API method - backend processes and returns data
-      const result = await apiService.getRegionData(currentRegions[0], newFilters, recommendationsMode);
+      const result = await apiService.getRegionData(currentRegions[0], requestedFilters, recommendationsMode);
       
       if (!result.success) {
         throw new Error(result.error || 'Filter application failed');
       }
       
       setBackendResponse(result);
-      setCurrentFilters(newFilters);
+
+      if (result.filter_options) {
+        const transformedOptions = transformBackendFilterOptions(result.filter_options);
+        setFilterOptions(transformedOptions);
+      }
+      
+      // 🔄 SYNCHRONIZE WITH BACKEND APPLIED FILTERS
+      const synchronizedFilters = synchronizeFiltersWithBackend(requestedFilters, result);
+      setCurrentFilters(synchronizedFilters);
+      
+      console.log('✅ Filters synchronized:', {
+        requested: requestedFilters,
+        synchronized: synchronizedFilters,
+        backendApplied: result.metadata?.filters_applied
+      });
       
       // Performance check based on existing API response structure
       if (result.render_mode === 'summary') {
@@ -323,10 +400,11 @@ export const usePerformanceOptimizedBackendData = () => {
     } finally {
       setFilterLoading(false);
     }
-  }, [currentRegions, currentFilters, initialLoading, filterLoading, apiService]);
+  }, [currentRegions, currentFilters, initialLoading, filterLoading, apiService, synchronizeFiltersWithBackend]);
   
   /**
    * STEP 3: Region change - back to filters only
+   * UPDATED: Properly resets to region defaults
    */
   const changeRegions = useCallback(async (newRegions: string[]) => {
     if (JSON.stringify(newRegions.sort()) === JSON.stringify(currentRegions.sort())) {
@@ -369,50 +447,28 @@ export const usePerformanceOptimizedBackendData = () => {
   
   /**
    * STEP 4: Reset filters - back to filters only
+   * UPDATED: Properly resets and gets fresh region data
    */
-  const resetFilters = useCallback(() => {
-    console.log('Performance Optimization: Reset filters, back to filters-only mode');
+  const resetFilters = useCallback(async () => {
+    console.log('Performance Optimization: Reset filters, loading fresh region data');
     
     const recommendationsMode = currentFilters.nodeTypes?.includes('INCUMBENT_PRODUCT') || false;
     
-    // Clear graph, set back to filters-only
+    // Clear graph, set back to filters-only, and reload region data
     setGraphData({
       nodes: [],
       edges: [],
       canRender: false,
       performance: {
         mode: 'filters_only',
-        message: `Filters reset for ${currentRegions[0]}. Apply filters to load graph data.`,
+        message: `Resetting filters for ${currentRegions[0]}...`,
         nodeCount: 0
       }
     });
     
-    // Reset filter criteria
-    const defaultFilters: FilterCriteria = {
-      regions: currentRegions,
-      nodeTypes: recommendationsMode 
-        ? ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT', 'INCUMBENT_PRODUCT']
-        : ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT'],
-      showInactive: true,
-      sales_regions: [],
-      channels: [],
-      ratings: [],
-      influenceLevels: [],
-      assetClasses: [],
-      consultantIds: [],
-      fieldConsultantIds: [],
-      clientIds: [],
-      productIds: [],
-      incumbentProductIds: [],
-      pcaIds: [],
-      acaIds: [],
-      clientAdvisorIds: [],
-      consultantAdvisorIds: [],
-      legacyPcaIds: [],
-      mandateStatuses: []
-    };
-    setCurrentFilters(defaultFilters);
-  }, [currentFilters.nodeTypes, currentRegions]);
+    // Reload region data to get fresh filter options and reset to defaults
+    await loadRegionFiltersOnly(currentRegions, recommendationsMode);
+  }, [currentFilters.nodeTypes, currentRegions, loadRegionFiltersOnly]);
   
   /**
    * Get available regions
