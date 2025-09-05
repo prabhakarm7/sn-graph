@@ -1,4 +1,4 @@
-// WorkingFiltersInterface.tsx - Original design with all filters and fixed entity handling
+// WorkingFiltersInterface.tsx - Updated with purple chip colors for selected values
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -161,7 +161,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
     }
   };
   
-  // Styles - ORIGINAL DESIGN
+  // Styles with purple chip customization
   const selectStyles = {
     '& .MuiOutlinedInput-root': {
       bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.95)',
@@ -182,6 +182,18 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
       color: isDarkTheme ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
       '&.Mui-focused': {
         color: '#6366f1'
+      }
+    },
+    // Purple chip styling for selected values
+    '& .MuiChip-root': {
+      bgcolor: 'rgba(99, 102, 241, 0.2)',
+      color: '#6366f1',
+      border: '1px solid rgba(99, 102, 241, 0.3)',
+      '& .MuiChip-deleteIcon': {
+        color: '#6366f1',
+        '&:hover': {
+          color: '#4f46e5'
+        }
       }
     }
   };
@@ -225,7 +237,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
       flexDirection: 'column',
       bgcolor: 'rgba(15, 23, 42, 0.98)'
     }}>
-      {/* Header - ORIGINAL DESIGN */}
+      {/* Header */}
       <Box sx={{ 
         display: 'flex', 
         alignItems: 'center', 
@@ -283,7 +295,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
       
       <Box sx={{ flexGrow: 1, overflowY: 'auto', pr: 1 }}>
         <Stack spacing={2}>
-          {/* Region Filter - ORIGINAL DESIGN */}
+          {/* Region Filter */}
           <Card sx={{ 
             bgcolor: 'rgba(99, 102, 241, 0.1)', 
             border: '2px solid rgba(99, 102, 241, 0.3)',
@@ -382,7 +394,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             </CardContent>
           </Card>
 
-          {/* Entity Filters - ORIGINAL DESIGN WITH FIXES */}
+          {/* Entity Filters */}
           <Typography variant="subtitle2" sx={{ 
             color: 'white', 
             fontWeight: 'bold', 
@@ -395,7 +407,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             Entity Filters (Backend Processed)
           </Typography>
 
-          {/* Consultants - FIXED */}
+          {/* Consultants */}
           <Autocomplete
             multiple
             size="small"
@@ -411,7 +423,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
 
-          {/* Field Consultants - FIXED */}
+          {/* Field Consultants */}
           <Autocomplete
             multiple
             size="small"
@@ -427,7 +439,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
 
-          {/* Client Companies - FIXED */}
+          {/* Client Companies */}
           <Autocomplete
             multiple
             size="small"
@@ -443,7 +455,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
 
-          {/* Products - FIXED */}
+          {/* Products */}
           <Autocomplete
             multiple
             size="small"
@@ -459,7 +471,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
 
-          {/* Incumbent Products (Recommendations Mode) - FIXED */}
+          {/* Incumbent Products (Recommendations Mode) */}
           {recommendationsMode && (
             <Card sx={{ 
               bgcolor: 'rgba(245, 158, 11, 0.1)', 
@@ -496,7 +508,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             </Card>
           )}
 
-          {/* Advisor Filters - ORIGINAL DESIGN */}
+          {/* Advisor Filters */}
           <Typography variant="subtitle2" sx={{ 
             color: 'white', 
             fontWeight: 'bold', 
@@ -564,7 +576,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
 
-          {/* Business Filters - ORIGINAL DESIGN */}
+          {/* Business Filters */}
           <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)', my: 1 }} />
           
           <Typography variant="subtitle2" sx={{ 
@@ -662,7 +674,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
 
-          {/* Show Inactive Toggle - ORIGINAL DESIGN */}
+          {/* Show Inactive Toggle */}
           <Card sx={{ 
             bgcolor: 'rgba(156, 163, 175, 0.1)', 
             border: '1px solid rgba(156, 163, 175, 0.3)',
@@ -696,7 +708,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             </CardContent>
           </Card>
 
-          {/* Apply/Reset buttons - ORIGINAL DESIGN */}
+          {/* Apply/Reset buttons */}
           <Box sx={{ 
             pt: 2, 
             flexShrink: 0,
@@ -731,7 +743,19 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
               >
                 {filterLoading && <CircularProgress size={16} sx={{ color: 'white' }} />}
                 Apply Backend Filters
-                {hasChanges && <Chip label="!" size="small" sx={{ bgcolor: '#ef4444', color: 'white', height: 16, fontSize: '0.6rem' }} />}
+                {hasChanges && (
+                  <Chip 
+                    label="!" 
+                    size="small" 
+                    sx={{ 
+                      bgcolor: '#6366f1', 
+                      color: 'white', 
+                      height: 16, 
+                      fontSize: '0.6rem',
+                      border: '1px solid rgba(255, 255, 255, 0.3)'
+                    }} 
+                  />
+                )}
               </Box>
             </Box>
           </Box>
