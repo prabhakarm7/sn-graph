@@ -443,7 +443,7 @@ class CompleteBackendFilterService:
         region: str, 
         recommendations_mode: bool
     ) -> Dict[str, Any]:
-        """Get ALL filter options in single optimized query - FIXED for proper array/string handling."""
+        """Get ALL filter options with proper data cleaning and deduplication."""
         
         try:
             if recommendations_mode:
@@ -454,7 +454,6 @@ class CompleteBackendFilterService:
                 OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
                 OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
                 
-                // Collect all raw values - handle both strings and arrays properly
                 WITH 
                     COLLECT(DISTINCT c.sales_region) AS raw_sales_regions,
                     COLLECT(DISTINCT c.channel) AS raw_channels,
@@ -471,47 +470,18 @@ class CompleteBackendFilterService:
                     COLLECT(DISTINCT {{id: ip.name, name: ip.name}}) AS incumbent_products,
                     COLLECT(DISTINCT rating.rankgroup) AS raw_ratings
                 
-                // Flatten arrays properly - simplified approach without type checking
                 RETURN {{
-                    markets: CASE 
-                        WHEN size(raw_sales_regions) = 0 THEN []
-                        ELSE reduce(acc = [], item IN raw_sales_regions | 
-                            acc + CASE 
-                                WHEN item IS NULL THEN []
-                                ELSE [item]
-                            END)
-                        END,
-                    channels: CASE 
-                        WHEN size(raw_channels) = 0 THEN []
-                        ELSE reduce(acc = [], item IN raw_channels | 
-                            acc + CASE 
-                                WHEN item IS NULL THEN []
-                                ELSE [item]
-                            END)
-                        END,
-                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL],
-                    consultants: [item IN consultants WHERE item.name IS NOT NULL],
-                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL],
-                    companies: [item IN companies WHERE item.name IS NOT NULL],
-                    products: [item IN products WHERE item.name IS NOT NULL],
-                    incumbent_products: [item IN incumbent_products WHERE item.name IS NOT NULL],
-                    client_advisors: CASE 
-                        WHEN size(raw_company_pcas + raw_company_acas) = 0 THEN []
-                        ELSE reduce(acc = [], item IN raw_company_pcas + raw_company_acas | 
-                            acc + CASE 
-                                WHEN item IS NULL THEN []
-                                ELSE [item]
-                            END)
-                        END,
-                    consultant_advisors: CASE 
-                        WHEN size(raw_consultant_pcas + raw_consultant_advisors) = 0 THEN []
-                        ELSE reduce(acc = [], item IN raw_consultant_pcas + raw_consultant_advisors | 
-                            acc + CASE 
-                                WHEN item IS NULL THEN []
-                                ELSE [item]
-                            END)
-                        END,
-                    ratings: [item IN raw_ratings WHERE item IS NOT NULL],
+                    markets: [item IN raw_sales_regions WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
+                    channels: [item IN raw_channels WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
+                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
+                    consultants: [item IN consultants WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    companies: [item IN companies WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    products: [item IN products WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    incumbent_products: [item IN incumbent_products WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    client_advisors: raw_company_pcas + raw_company_acas,
+                    consultant_advisors: raw_consultant_pcas + raw_consultant_advisors,
+                    ratings: [item IN raw_ratings WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
                     mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
                     influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
                 }} AS FilterOptions
@@ -540,52 +510,22 @@ class CompleteBackendFilterService:
                     COLLECT(DISTINCT rating.rankgroup) AS raw_ratings
                 
                 RETURN {{
-                    markets: CASE 
-                        WHEN size(raw_sales_regions) = 0 THEN []
-                        ELSE reduce(acc = [], item IN raw_sales_regions | 
-                            acc + CASE 
-                                WHEN item IS NULL THEN []
-                                ELSE [item]
-                            END)
-                        END,
-                    channels: CASE 
-                        WHEN size(raw_channels) = 0 THEN []
-                        ELSE reduce(acc = [], item IN raw_channels | 
-                            acc + CASE 
-                                WHEN item IS NULL THEN []
-                                ELSE [item]
-                            END)
-                        END,
-                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL],
-                    consultants: [item IN consultants WHERE item.name IS NOT NULL],
-                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL],
-                    companies: [item IN companies WHERE item.name IS NOT NULL],
-                    products: [item IN products WHERE item.name IS NOT NULL],
-                    client_advisors: CASE 
-                        WHEN size(raw_company_pcas + raw_company_acas) = 0 THEN []
-                        ELSE reduce(acc = [], item IN raw_company_pcas + raw_company_acas | 
-                            acc + CASE 
-                                WHEN item IS NULL THEN []
-                                ELSE [item]
-                            END)
-                        END,
-                    consultant_advisors: CASE 
-                        WHEN size(raw_consultant_pcas + raw_consultant_advisors) = 0 THEN []
-                        ELSE reduce(acc = [], item IN raw_consultant_pcas + raw_consultant_advisors | 
-                            acc + CASE 
-                                WHEN item IS NULL THEN []
-                                ELSE [item]
-                            END)
-                        END,
-                    ratings: [item IN raw_ratings WHERE item IS NOT NULL],
+                    markets: [item IN raw_sales_regions WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
+                    channels: [item IN raw_channels WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
+                    asset_classes: [item IN raw_asset_classes WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
+                    consultants: [item IN consultants WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    field_consultants: [item IN field_consultants WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    companies: [item IN companies WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    products: [item IN products WHERE item.name IS NOT NULL AND trim(toString(item.name)) <> ''],
+                    client_advisors: raw_company_pcas + raw_company_acas,
+                    consultant_advisors: raw_consultant_pcas + raw_consultant_advisors,
+                    ratings: [item IN raw_ratings WHERE item IS NOT NULL AND trim(toString(item)) <> ''],
                     mandate_statuses: ['Active', 'At Risk', 'Conversion in Progress'],
                     influence_levels: ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK']
                 }} AS FilterOptions
                 """
             
-            print(f"Executing filter options query for region: {region}, recommendations_mode: {recommendations_mode}")
-            
-            # Use parameterized query for safety
+            print(f"Executing cleaned filter options query for region: {region}")
             result = session.run(filter_query, {"region": region})
             record = result.single()
             
@@ -593,47 +533,142 @@ class CompleteBackendFilterService:
                 options = record['FilterOptions']
                 print(f"Raw filter options retrieved: {len(options)} filter types")
                 
-                # Clean and limit results
+                # ENHANCED CLEANING LOGIC
+                cleaned_options = {}
+                
                 for key, value in options.items():
                     if isinstance(value, list):
-                        if key in ['client_advisors', 'consultant_advisors']:
-                            # Remove duplicates and empty values for advisor lists
-                            # Handle potential comma-separated values in database
-                            flattened_values = []
-                            for v in value:
-                                if v and str(v).strip():
-                                    # If it contains comma, split it
-                                    if ',' in str(v):
-                                        flattened_values.extend([item.strip() for item in str(v).split(',') if item.strip()])
-                                    else:
-                                        flattened_values.append(str(v).strip())
-                            options[key] = list(set(flattened_values))[:MAX_FILTER_RESULTS]
-                        elif key in ['consultants', 'field_consultants', 'companies', 'products', 'incumbent_products']:
-                            # Entity lists - remove nulls and limit
-                            options[key] = [item for item in value if item and item.get('name')][:MAX_FILTER_RESULTS]
+                        if key in ['consultants', 'field_consultants', 'companies', 'products', 'incumbent_products']:
+                            # Entity lists - clean and deduplicate
+                            cleaned_entities = []
+                            seen_names = set()
+                            
+                            for item in value:
+                                if item and isinstance(item, dict) and item.get('name'):
+                                    name = str(item['name']).strip()
+                                    if name and name not in seen_names and not self._is_malformed_name(name):
+                                        seen_names.add(name)
+                                        cleaned_entities.append({'id': name, 'name': name})
+                            
+                            cleaned_options[key] = cleaned_entities[:MAX_FILTER_RESULTS]
+                            
+                        elif key in ['client_advisors', 'consultant_advisors', 'markets', 'channels', 'asset_classes', 'ratings']:
+                            # Advisor and string lists - clean, split, and deduplicate
+                            cleaned_values = set()
+                            
+                            for item in value:
+                                if item:
+                                    # Convert to string and clean
+                                    str_item = str(item).strip()
+                                    if str_item and not self._is_malformed_value(str_item):
+                                        # Handle comma-separated values
+                                        if ',' in str_item:
+                                            parts = [p.strip() for p in str_item.split(',')]
+                                            for part in parts:
+                                                if part and not self._is_malformed_value(part):
+                                                    cleaned_values.add(part)
+                                        else:
+                                            cleaned_values.add(str_item)
+                            
+                            cleaned_options[key] = sorted(list(cleaned_values))[:MAX_FILTER_RESULTS]
+                            
                         else:
-                            # Simple lists - remove nulls and limit
-                            options[key] = [v for v in value if v][:MAX_FILTER_RESULTS]
+                            # Static lists - pass through as is
+                            cleaned_options[key] = value
+                    else:
+                        cleaned_options[key] = value
                 
-                print(f"Cleaned filter options: {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in options.items()]}")
-                return options
+                print(f"Cleaned filter options: {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in cleaned_options.items()]}")
+                return cleaned_options
+                
             else:
-                print("No FilterOptions found in query result, returning empty options")
+                print("No FilterOptions found, returning empty options")
                 return self._empty_filter_options(recommendations_mode)
                 
         except Exception as e:
-            print(f"ERROR in _get_complete_filter_options: {str(e)}")
-            print(f"Region: {region}, recommendations_mode: {recommendations_mode}")
-            
-            # Return empty options with error info
-            empty_options = self._empty_filter_options(recommendations_mode)
-            empty_options['_error'] = {
-                'message': str(e),
-                'region': region,
-                'recommendations_mode': recommendations_mode,
-                'timestamp': time.time()
-            }
-            return empty_options    
+            print(f"ERROR in filter options cleaning: {str(e)}")
+            return self._empty_filter_options(recommendations_mode)
+
+    def _is_malformed_name(self, name: str) -> bool:
+        """Check if a name is malformed and should be excluded."""
+        if not name or len(name.strip()) == 0:
+            return True
+        
+        # Check for malformed patterns
+        malformed_patterns = [
+            "['name']",  # Literal string representation
+            "[\"name\"]",  # Another literal string representation
+            "name'],",   # Partial array notation
+            "].name",    # Broken object notation
+            "[object",   # JavaScript object representation
+            "undefined", # Undefined values
+            "null",      # Null values
+            "NaN"        # Not a number
+        ]
+        
+        name_lower = name.lower()
+        for pattern in malformed_patterns:
+            if pattern in name_lower:
+                return True
+        
+        # Check for suspicious characters that indicate data corruption
+        if any(char in name for char in ['[', ']', '{', '}', '\'', '"']) and len(name) < 50:
+            return True
+        
+        # Check for extremely long values (likely corrupted data)
+        if len(name) > 200:
+            return True
+        
+        return False
+
+    def _is_malformed_value(self, value: str) -> bool:
+        """Check if a value is malformed and should be excluded."""
+        if not value or len(value.strip()) == 0:
+            return True
+        
+        # Similar checks as malformed names but more lenient
+        malformed_indicators = [
+            "['",
+            "']",
+            "[\"",
+            "\"]",
+            "undefined",
+            "null",
+            "[object"
+        ]
+        
+        value_lower = value.lower().strip()
+        for indicator in malformed_indicators:
+            if value_lower.startswith(indicator) or value_lower.endswith(indicator):
+                return True
+        
+        # Check for extremely long values
+        if len(value) > 100:
+            return True
+        
+        return False
+
+    def _empty_filter_options(self, recommendations_mode: bool) -> Dict[str, Any]:
+        """Return empty filter options structure - WITH client/consultant advisors included."""
+        base_options = {
+            "markets": [],
+            "channels": [],
+            "asset_classes": [],
+            "consultants": [],
+            "field_consultants": [],
+            "companies": [],
+            "products": [],
+            "client_advisors": [],
+            "consultant_advisors": [],
+            "ratings": ["Positive", "Negative", "Neutral", "Introduced"],
+            "mandate_statuses": ["Active", "At Risk", "Conversion in Progress"],
+            "influence_levels": ["1", "2", "3", "4", "High", "medium", "low", "UNK"]
+        }
+        
+        if recommendations_mode:
+            base_options["incumbent_products"] = []
+        
+        return base_options  
     
     def _calculate_layout_positions(self, nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Calculate layout positions server-side - no client-side Dagre needed."""
