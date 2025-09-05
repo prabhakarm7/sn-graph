@@ -1309,18 +1309,45 @@ class CompleteBackendFilterService:
 
     # THEN ADD THE POST-PROCESSING METHOD:
     def _remove_orphans_post_processing(self, nodes: List[Dict], relationships: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
-        """Remove orphan nodes using post-processing."""
+        """Remove orphan nodes AND orphan relationships using post-processing."""
         if not relationships:
             return nodes, relationships
         
-        connected_node_ids = set()
+        # Step 1: Get all valid node IDs
+        valid_node_ids = set(node['id'] for node in nodes if node.get('id'))
+        
+        # Step 2: Filter relationships to only include those with valid source AND target nodes
+        valid_relationships = []
+        orphaned_relationships = []
+        
         for rel in relationships:
+            source_id = rel.get('source')
+            target_id = rel.get('target')
+            
+            # Check if both source and target exist in our filtered nodes
+            if source_id in valid_node_ids and target_id in valid_node_ids:
+                valid_relationships.append(rel)
+            else:
+                orphaned_relationships.append(rel)
+                print(f"Orphaned relationship: {rel.get('data', {}).get('relType', 'UNKNOWN')} "
+                    f"from {source_id} to {target_id} "
+                    f"(source_exists: {source_id in valid_node_ids}, "
+                    f"target_exists: {target_id in valid_node_ids})")
+        
+        # Step 3: Now find connected nodes based on VALID relationships
+        connected_node_ids = set()
+        for rel in valid_relationships:
             connected_node_ids.add(rel['source'])
             connected_node_ids.add(rel['target'])
         
+        # Step 4: Keep only nodes that are actually connected by valid relationships
         connected_nodes = [node for node in nodes if node['id'] in connected_node_ids]
-        print(f"Orphan removal: {len(nodes)} -> {len(connected_nodes)} nodes")
-        return connected_nodes, relationships
+        
+        print(f"Orphan removal: {len(nodes)} -> {len(connected_nodes)} nodes, "
+            f"{len(relationships)} -> {len(valid_relationships)} relationships, "
+            f"removed {len(orphaned_relationships)} orphaned edges")
+        
+        return connected_nodes, valid_relationships
 
 
 # Global service instance
