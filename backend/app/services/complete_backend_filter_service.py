@@ -38,22 +38,24 @@ class CompleteBackendFilterService:
         recommendations_mode: bool = False
     ) -> Dict[str, Any]:
         """
-        MAIN METHOD: Get completely processed data ready for frontend rendering.
-        All filtering, rating collection, layout calculation done server-side.
+        FIXED: Get completely processed data with appropriate filter options.
+        Returns complete region options when no filters applied,
+        filtered options when filters produce results.
         """
         filters = filters or {}
         region = region.upper()
+        has_filters_applied = any(filters.values())  # Check if any filters were actually applied
         
         try:
             with self.driver.session() as session:
                 # Step 1: Build complete query with all filters applied
                 query, params = self._build_complete_query(region, filters, recommendations_mode)
-                print(query)
+                print(f"Executing complete backend query for {region} (filters applied: {has_filters_applied})")
+                
                 # Step 2: Execute single optimized query
-                print(f"Executing complete backend query for {region}")
                 result = session.run(query, params)
                 records = list(result)
-                #print(records)
+                
                 if not records:
                     return self._empty_response(region, recommendations_mode)
                 
@@ -61,22 +63,31 @@ class CompleteBackendFilterService:
                 nodes = graph_data.get('nodes', [])
                 relationships = graph_data.get('relationships', [])
 
-                # ADD THIS LINE - Post-processing orphan removal
+                # Step 3: Post-processing orphan removal
                 nodes, relationships = self._remove_orphans_post_processing(nodes, relationships)
                 
                 print(f"Backend processing complete: {len(nodes)} nodes, {len(relationships)} relationships")
                 
-                # Step 3: Check performance limits
+                # Step 4: Check performance limits
                 if len(nodes) > MAX_GRAPH_NODES:
                     return self._create_summary_response(region, len(nodes), filters, recommendations_mode)
                 
-                # Step 4: Calculate layout positions server-side
+                # Step 5: Calculate layout positions server-side
                 positioned_nodes = self._calculate_layout_positions(nodes)
                 
-                # Step 5: Get filter options in single query
-                filter_options = self._get_complete_filter_options(session, region, recommendations_mode)
+                # Step 6: Get appropriate filter options based on context
+                if has_filters_applied and len(nodes) > 0:
+                    # User applied filters and got results - show what's available in current dataset
+                    filter_options = self._get_filtered_options_from_actual_data(nodes, region, recommendations_mode)
+                    filter_options_type = "filtered_data"
+                    print(f"Returning filtered options based on {len(nodes)} result nodes")
+                else:
+                    # No filters applied or no results - show all region options for initial selection
+                    filter_options = self._get_complete_filter_options(session, region, recommendations_mode)
+                    filter_options_type = "complete_region"
+                    print(f"Returning complete region options for filter selection")
                 
-                # Step 6: Return complete ready-to-render response
+                # Step 7: Return complete ready-to-render response
                 return {
                     "success": True,
                     "render_mode": "graph",
@@ -92,13 +103,16 @@ class CompleteBackendFilterService:
                         "mode": "recommendations" if recommendations_mode else "standard",
                         "server_side_processing": True,
                         "filters_applied": filters,
+                        "filter_options_type": filter_options_type,
+                        "has_filters_applied": has_filters_applied,
                         "processing_time_ms": int(time.time() * 1000),
                         "optimizations": [
                             "Server-side filtering",
                             "Embedded rating collection", 
                             "Pre-calculated layouts",
                             "Single query execution",
-                            "Performance limiting"
+                            "Performance limiting",
+                            "Context-aware filter options"
                         ]
                     }
                 }
@@ -109,7 +123,151 @@ class CompleteBackendFilterService:
                 "error": f"Complete backend processing failed: {str(e)}",
                 "render_mode": "error"
             }
-    
+
+    def _get_filtered_options_from_actual_data(
+        self,
+        nodes: List[Dict],
+        region: str,
+        recommendations_mode: bool
+    ) -> Dict[str, Any]:
+        """
+        Extract filter options from the actual result nodes only.
+        This ensures dropdowns show only values present in current filtered dataset.
+        """
+        if not nodes:
+            return self._empty_filter_options(recommendations_mode)
+        
+        # Extract unique values from actual nodes found
+        consultants = []
+        field_consultants = []
+        companies = []
+        products = []
+        incumbent_products = []
+        channels = set()
+        sales_regions = set()
+        asset_classes = set()
+        client_advisors = set()
+        consultant_advisors = set()
+        
+        for node in nodes:
+            node_type = node.get('type')
+            data = node.get('data', {})
+            
+            if node_type == 'CONSULTANT' and data.get('name'):
+                consultants.append({'id': data['name'], 'name': data['name']})
+                # Extract advisor information
+                if data.get('pca'):
+                    if isinstance(data['pca'], list):
+                        consultant_advisors.update(data['pca'])
+                    else:
+                        consultant_advisors.add(data['pca'])
+                if data.get('consultant_advisor'):
+                    if isinstance(data['consultant_advisor'], list):
+                        consultant_advisors.update(data['consultant_advisor'])
+                    else:
+                        consultant_advisors.add(data['consultant_advisor'])
+                    
+            elif node_type == 'FIELD_CONSULTANT' and data.get('name'):
+                field_consultants.append({'id': data['name'], 'name': data['name']})
+                
+            elif node_type == 'COMPANY' and data.get('name'):
+                companies.append({'id': data['name'], 'name': data['name']})
+                # Extract company attributes
+                if data.get('channel'):
+                    if isinstance(data['channel'], list):
+                        channels.update(data['channel'])
+                    else:
+                        channels.add(data['channel'])
+                if data.get('sales_region'):
+                    if isinstance(data['sales_region'], list):
+                        sales_regions.update(data['sales_region'])
+                    else:
+                        sales_regions.add(data['sales_region'])
+                # Extract client advisors from company data
+                if data.get('pca'):
+                    if isinstance(data['pca'], list):
+                        client_advisors.update(data['pca'])
+                    else:
+                        client_advisors.add(data['pca'])
+                if data.get('aca'):
+                    if isinstance(data['aca'], list):
+                        client_advisors.update(data['aca'])
+                    else:
+                        client_advisors.add(data['aca'])
+                    
+            elif node_type == 'PRODUCT' and data.get('name'):
+                products.append({'id': data['name'], 'name': data['name']})
+                if data.get('asset_class'):
+                    if isinstance(data['asset_class'], list):
+                        asset_classes.update(data['asset_class'])
+                    else:
+                        asset_classes.add(data['asset_class'])
+                    
+            elif node_type == 'INCUMBENT_PRODUCT' and data.get('name'):
+                incumbent_products.append({'id': data['name'], 'name': data['name']})
+                if data.get('asset_class'):
+                    if isinstance(data['asset_class'], list):
+                        asset_classes.update(data['asset_class'])
+                    else:
+                        asset_classes.add(data['asset_class'])
+        
+        # Clean and sort the collected values
+        def clean_string_set(string_set):
+            """Remove None values and empty strings, sort result"""
+            cleaned = {str(item).strip() for item in string_set if item and str(item).strip()}
+            return sorted(list(cleaned))
+        
+        # Build filtered options structure
+        filtered_options = {
+            "markets": clean_string_set(sales_regions),
+            "channels": clean_string_set(channels),
+            "asset_classes": clean_string_set(asset_classes),
+            "consultants": consultants,
+            "field_consultants": field_consultants,
+            "companies": companies,
+            "products": products,
+            "client_advisors": clean_string_set(client_advisors),
+            "consultant_advisors": clean_string_set(consultant_advisors),
+            # Static options that don't change based on data
+            "ratings": ["Positive", "Negative", "Neutral", "Introduced"],
+            "mandate_statuses": ["Active", "At Risk", "Conversion in Progress"],
+            "influence_levels": ["1", "2", "3", "4", "High", "medium", "low", "UNK"]
+        }
+        
+        if recommendations_mode:
+            filtered_options["incumbent_products"] = incumbent_products
+        
+        print(f"Filtered options extracted: {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in filtered_options.items()]}")
+        
+        return filtered_options
+
+
+    def _empty_response(self, region: str, recommendations_mode: bool) -> Dict[str, Any]:
+        """
+        UPDATED: Return empty response with complete filter options for user selection.
+        """
+        with self.driver.session() as session:
+            # No data found - provide complete region options for initial filtering
+            filter_options = self._get_complete_filter_options(session, region, recommendations_mode)
+        
+        return {
+            "success": True,
+            "render_mode": "graph",
+            "data": {
+                "nodes": [],
+                "relationships": [],
+                "total_nodes": 0,
+                "total_relationships": 0
+            },
+            "filter_options": filter_options,
+            "metadata": {
+                "region": region,
+                "mode": "recommendations" if recommendations_mode else "standard",
+                "server_side_processing": True,
+                "empty_result": True,
+                "filter_options_type": "complete_region"
+            }
+        }
     def _build_complete_query(
         self, 
         region: str, 
@@ -793,26 +951,6 @@ class CompleteBackendFilterService:
         
         return suggestions
     
-    def _empty_response(self, region: str, recommendations_mode: bool) -> Dict[str, Any]:
-        """Return empty response structure."""
-        return {
-            "success": True,
-            "render_mode": "graph",
-            "data": {
-                "nodes": [],
-                "relationships": [],
-                "total_nodes": 0,
-                "total_relationships": 0
-            },
-            "filter_options": self._empty_filter_options(recommendations_mode),
-            "metadata": {
-                "region": region,
-                "mode": "recommendations" if recommendations_mode else "standard",
-                "server_side_processing": True,
-                "empty_result": True
-            }
-        }
-    
     def _empty_filter_options(self, recommendations_mode: bool) -> Dict[str, Any]:
         """Return empty filter options structure."""
         base_options = {
@@ -1168,106 +1306,6 @@ class CompleteBackendFilterService:
         else:
             return f"Dataset size ({total_nodes} nodes) is optimal for visualization."
 
-    def get_complete_filtered_data(
-        self, 
-        region: str,
-        filters: Dict[str, Any] = None,
-        recommendations_mode: bool = False
-    ) -> Dict[str, Any]:
-        """
-        OPTIMIZED MAIN METHOD: Get completely processed data with separate rating collection.
-        """
-        filters = filters or {}
-        region = region.upper()
-        
-        try:
-            with self.driver.session() as session:
-                # Step 1: Build and execute optimized main query (no ratings)
-                query, params = self._build_complete_query(region, filters, recommendations_mode)
-                print(f"Executing optimized backend query for {region}")
-                
-                result = session.run(query, params)
-                records = list(result)
-                
-                if not records:
-                    return self._empty_response(region, recommendations_mode)
-                
-                graph_data = records[0]['GraphData']
-                nodes = graph_data.get('nodes', [])
-                relationships = graph_data.get('relationships', [])
-                
-                print(f"Main query complete: {len(nodes)} nodes, {len(relationships)} relationships")
-                
-                # Step 2: Post-processing orphan removal
-                nodes, relationships = self._remove_orphans_post_processing(nodes, relationships)
-                
-                # Step 3: Collect ratings separately for product nodes only
-                product_node_ids = [
-                    node['id'] for node in nodes 
-                    if node['type'] in ['PRODUCT', 'INCUMBENT_PRODUCT']
-                ]
-                
-                ratings_map = {}
-                if product_node_ids:
-                    print(f"Collecting ratings for {len(product_node_ids)} product nodes")
-                    ratings_map = self.get_ratings_for_nodes(session, product_node_ids, filters)
-                
-                # Step 4: Merge ratings into nodes
-                for node in nodes:
-                    if node['id'] in ratings_map:
-                        node['data']['ratings'] = ratings_map[node['id']]
-                    else:
-                        node['data']['ratings'] = []
-                
-                print(f"Processing complete: {len(nodes)} nodes, {len(relationships)} relationships, {len(ratings_map)} nodes with ratings")
-                
-                # Step 5: Check performance limits
-                if len(nodes) > MAX_GRAPH_NODES:
-                    return self._create_summary_response(region, len(nodes), filters, recommendations_mode)
-                
-                # Step 6: Calculate layout positions
-                positioned_nodes = self._calculate_layout_positions(nodes)
-                
-                # Step 7: Get filter options
-                filter_options = self._get_complete_filter_options(session, region, recommendations_mode)
-                
-                # Step 8: Return complete response
-                return {
-                    "success": True,
-                    "render_mode": "graph",
-                    "data": {
-                        "nodes": positioned_nodes,
-                        "relationships": relationships,
-                        "total_nodes": len(nodes),
-                        "total_relationships": len(relationships)
-                    },
-                    "filter_options": filter_options,
-                    "metadata": {
-                        "region": region,
-                        "mode": "recommendations" if recommendations_mode else "standard",
-                        "server_side_processing": True,
-                        "filters_applied": filters,
-                        "processing_time_ms": int(time.time() * 1000),
-                        "optimizations": [
-                            "Optimized query structure",
-                            "Separate rating collection",
-                            "Post-processing orphan removal", 
-                            "Pre-calculated layouts",
-                            "Progressive node collection"
-                        ],
-                        "performance_stats": {
-                            "nodes_with_ratings": len(ratings_map),
-                            "rating_collection_optimized": True
-                        }
-                    }
-                }
-                
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Optimized backend processing failed: {str(e)}",
-                "render_mode": "error"
-            }
 
     def _create_enhanced_summary_response(
         self, 
