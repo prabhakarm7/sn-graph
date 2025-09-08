@@ -1695,15 +1695,27 @@ class CompleteBackendFilterService:
         """Remove orphan nodes AND orphan relationships using post-processing."""
         if not relationships:
             return nodes, relationships
+        # Step 1: Remove duplicate relationships by creating unique key
+        unique_relationships = {}
+        for rel in relationships:
+            # Create unique key from source + target + relationship type
+            rel_data = rel.get('data', {})
+            unique_key = f"{rel.get('source')}:{rel.get('target')}:{rel_data.get('relType', 'UNKNOWN')}"
+            
+            if unique_key not in unique_relationships:
+                unique_relationships[unique_key] = rel
         
-        # Step 1: Get all valid node IDs
+        deduplicated_relationships = list(unique_relationships.values())
+        print(f"Relationship deduplication: {len(relationships)} -> {len(deduplicated_relationships)} relationships")
+        
+        # Step 2: Continue with existing orphan removal logic
         valid_node_ids = set(node['id'] for node in nodes if node.get('id'))
         
         # Step 2: Filter relationships to only include those with valid source AND target nodes
         valid_relationships = []
         orphaned_relationships = []
         
-        for rel in relationships:
+        for rel in deduplicated_relationships:
             source_id = rel.get('source')
             target_id = rel.get('target')
             
