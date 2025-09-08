@@ -126,21 +126,23 @@ export class SimplifiedApiService {
     recommendationsMode: boolean
   ): Promise<BackendResponse> {
     
-    const filterRequest = {
-      consultantIds: filters.consultantIds || null,
-      fieldConsultantIds: filters.fieldConsultantIds || null,
-      clientIds: filters.clientIds || null,
-      productIds: filters.productIds || null,
-      incumbentProductIds: filters.incumbentProductIds || null,
-      clientAdvisorIds: filters.clientAdvisorIds || null,
-      consultantAdvisorIds: filters.consultantAdvisorIds || null,
-      channels: filters.channels || null,
-      assetClasses: filters.assetClasses || null,
-      mandateStatuses: filters.mandateStatuses || null,
-      sales_regions: filters.sales_regions || null,
-      ratings: filters.ratings || null,
-      influenceLevels: filters.influenceLevels || null
-    };
+    const filterRequest: any = {};
+  
+    if (filters.consultantIds?.length) filterRequest.consultantIds = filters.consultantIds;
+    if (filters.fieldConsultantIds?.length) filterRequest.fieldConsultantIds = filters.fieldConsultantIds;
+    if (filters.clientIds?.length) filterRequest.clientIds = filters.clientIds;
+    if (filters.productIds?.length) filterRequest.productIds = filters.productIds;
+    if (filters.incumbentProductIds?.length) filterRequest.incumbentProductIds = filters.incumbentProductIds;
+    if (filters.clientAdvisorIds?.length) filterRequest.clientAdvisorIds = filters.clientAdvisorIds;
+    if (filters.consultantAdvisorIds?.length) filterRequest.consultantAdvisorIds = filters.consultantAdvisorIds;
+    if (filters.channels?.length) filterRequest.channels = filters.channels;
+    if (filters.assetClasses?.length) filterRequest.assetClasses = filters.assetClasses;
+    if (filters.mandateStatuses?.length) filterRequest.mandateStatuses = filters.mandateStatuses;
+    if (filters.sales_regions?.length) filterRequest.sales_regions = filters.sales_regions;
+    if (filters.ratings?.length) filterRequest.ratings = filters.ratings;
+    if (filters.influenceLevels?.length) filterRequest.influenceLevels = filters.influenceLevels;
+   
+    console.log('Sending clean filter request:', filterRequest);
 
     const response = await fetch(
       `${this.baseUrl}/api/v1/complete/region/${region}/filtered?recommendations_mode=${recommendationsMode}`,

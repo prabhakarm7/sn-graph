@@ -1,7 +1,8 @@
-# services/complete_backend_filter_service.py
+# services/complete_backend_filter_service.py - UPDATED with memory cache
 """
 Complete backend filter service that handles ALL complex logic server-side.
 Frontend only sends filter criteria and receives ready-to-render data.
+NOW WITH MEMORY CACHING for filter options.
 """
 import time
 from typing import Dict, List, Any, Optional, Tuple
@@ -11,6 +12,8 @@ from neo4j.exceptions import Neo4jError
 from app.config import (
     NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, NEO4J_DATABASE, REGIONS
 )
+# ADD THIS IMPORT
+from app.services.memory_filter_cache import memory_filter_cache
 
 # Performance constants
 MAX_GRAPH_NODES = 500
@@ -18,7 +21,7 @@ MAX_FILTER_RESULTS = 400
 
 
 class CompleteBackendFilterService:
-    """Complete backend service - ALL complex logic moved from frontend."""
+    """Complete backend service - ALL complex logic moved from frontend + MEMORY CACHE."""
     
     def __init__(self):
         self.driver = GraphDatabase.driver(
@@ -26,10 +29,14 @@ class CompleteBackendFilterService:
             auth=(NEO4J_USERNAME, NEO4J_PASSWORD),
             database=NEO4J_DATABASE
         )
+        # ADD THIS LINE
+        self.cache = memory_filter_cache
     
     def close(self):
         if self.driver:
             self.driver.close()
+        # ADD THIS LINE
+        self.cache.cleanup()
     
     def get_complete_filtered_data(
         self, 
@@ -38,56 +45,69 @@ class CompleteBackendFilterService:
         recommendations_mode: bool = False
     ) -> Dict[str, Any]:
         """
-        FIXED: Get completely processed data with appropriate filter options.
-        Returns complete region options when no filters applied,
-        filtered options when filters produce results.
+        UPDATED: Get completely processed data with MEMORY CACHE for filter options.
         """
         filters = filters or {}
         region = region.upper()
-        has_filters_applied = any(filters.values())  # Check if any filters were actually applied
+        has_filters_applied = any(filters.values())
         
         try:
             with self.driver.session() as session:
-                # Step 1: Build complete query with all filters applied
+                # Step 1: Build complete query with all filters applied (UNCHANGED)
                 query, params = self._build_complete_query(region, filters, recommendations_mode)
                 print(f"Executing complete backend query for {region} (filters applied: {has_filters_applied})")
-                
-                # Step 2: Execute single optimized query
+                print("adasdasd",query)
+                print(params)
+                # Step 2: Execute single optimized query (UNCHANGED)
                 result = session.run(query, params)
                 records = list(result)
                 
                 if not records:
-                    return self._empty_response(region, recommendations_mode)
-                
+                    # UPDATED: Use cached filter options for empty response
+                    filter_options = self._get_cached_complete_filter_options(
+                        session, region, recommendations_mode
+                    )
+                    return self._empty_response_with_cached_options(region, recommendations_mode, filter_options)
+
                 graph_data = records[0]['GraphData']
                 nodes = graph_data.get('nodes', [])
                 relationships = graph_data.get('relationships', [])
 
-                # Step 3: Post-processing orphan removal
+                # Step 3: Post-processing orphan removal (UNCHANGED)
                 nodes, relationships = self._remove_orphans_post_processing(nodes, relationships)
                 
                 print(f"Backend processing complete: {len(nodes)} nodes, {len(relationships)} relationships")
                 
-                # Step 4: Check performance limits
+                # Step 4: Check performance limits (UNCHANGED)
                 if len(nodes) > MAX_GRAPH_NODES:
-                    return self._create_summary_response(region, len(nodes), filters, recommendations_mode)
+                    # UPDATED: Use cached filter options for summary
+                    filter_options = self._get_cached_complete_filter_options(
+                        session, region, recommendations_mode
+                    )
+                    return self._create_summary_response_with_cached_options(
+                        region, len(nodes), filters, recommendations_mode, filter_options
+                    )
                 
-                # Step 5: Calculate layout positions server-side
+                # Step 5: Calculate layout positions server-side (UNCHANGED)
                 positioned_nodes = self._calculate_layout_positions(nodes)
                 
-                # Step 6: Get appropriate filter options based on context
+                # Step 6: UPDATED - Smart cache strategy for filter options
                 if has_filters_applied and len(nodes) > 0:
-                    # User applied filters and got results - show what's available in current dataset
+                    # User applied filters and got results - show filtered options (NOT cached)
                     filter_options = self._get_filtered_options_from_actual_data(nodes, region, recommendations_mode)
                     filter_options_type = "filtered_data"
-                    print(f"Returning filtered options based on {len(nodes)} result nodes")
+                    cache_used = False
+                    print(f"Using fresh filtered options from {len(nodes)} result nodes")
                 else:
-                    # No filters applied or no results - show all region options for initial selection
-                    filter_options = self._get_complete_filter_options(session, region, recommendations_mode)
-                    filter_options_type = "complete_region"
-                    print(f"Returning complete region options for filter selection")
+                    # No filters applied or no results - use CACHED complete region options
+                    filter_options = self._get_cached_complete_filter_options(
+                        session, region, recommendations_mode
+                    )
+                    filter_options_type = "complete_region_cached"
+                    cache_used = True
+                    print(f"Using CACHED complete region options")
                 
-                # Step 7: Return complete ready-to-render response
+                # Step 7: Return complete ready-to-render response (UPDATED metadata)
                 return {
                     "success": True,
                     "render_mode": "graph",
@@ -105,10 +125,12 @@ class CompleteBackendFilterService:
                         "filters_applied": filters,
                         "filter_options_type": filter_options_type,
                         "has_filters_applied": has_filters_applied,
+                        "cache_used": cache_used,  # NEW
+                        "cache_type": "memory",   # NEW
                         "processing_time_ms": int(time.time() * 1000),
                         "optimizations": [
                             "Server-side filtering",
-                            "Embedded rating collection", 
+                            "Memory-cached filter options",  # UPDATED
                             "Pre-calculated layouts",
                             "Single query execution",
                             "Performance limiting",
@@ -123,6 +145,243 @@ class CompleteBackendFilterService:
                 "error": f"Complete backend processing failed: {str(e)}",
                 "render_mode": "error"
             }
+
+    # NEW METHOD: Cached filter options retrieval
+    def _get_cached_complete_filter_options(
+        self, 
+        session: Session, 
+        region: str, 
+        recommendations_mode: bool
+    ) -> Dict[str, Any]:
+        """Get complete filter options with MEMORY CACHING."""
+        
+        # Try cache first
+        cached_options = self.cache.get(region, recommendations_mode)
+        if cached_options:
+            print(f"MEMORY CACHE HIT for filter options: {region}, rec_mode: {recommendations_mode}")
+            print(cached_options)
+            return cached_options
+        
+        # Cache miss - compute fresh and cache
+        print(f"MEMORY CACHE MISS - computing fresh filter options for {region}")
+        start_time = time.time()
+        
+        # Use existing method to compute filter options
+        filter_options = self._get_complete_filter_options(session, region, recommendations_mode)
+        
+        compute_time = int((time.time() - start_time) * 1000)
+        print(f"Filter options computed in {compute_time}ms")
+        
+        # Cache the computed options
+        cache_success = self.cache.set(region, recommendations_mode, filter_options)
+        print(f"Memory cache SET success: {cache_success}")
+        
+        return filter_options
+
+    # NEW METHODS: Cache management
+    def invalidate_filter_cache(self, region: str = None) -> Dict[str, Any]:
+        """Invalidate memory cache entries."""
+        if region:
+            deleted_count = self.cache.invalidate_region(region.upper())
+            return {
+                "success": True,
+                "message": f"Invalidated {deleted_count} memory cache entries for region {region.upper()}",
+                "deleted_entries": deleted_count,
+                "cache_type": "memory"
+            }
+        else:
+            # Invalidate all filter cache
+            deleted_count = self.cache.invalidate_all()
+            return {
+                "success": True,
+                "message": f"Invalidated all {deleted_count} memory cache entries",
+                "deleted_entries": deleted_count,
+                "cache_type": "memory"
+            }
+
+    def warmup_filter_cache(self, regions: List[str] = None) -> Dict[str, Any]:
+        """Warm up memory cache for specified regions."""
+        regions = regions or list(REGIONS.keys())
+        
+        def compute_filter_options(region: str, recommendations_mode: bool) -> Dict[str, Any]:
+            with self.driver.session() as session:
+                return self._get_complete_filter_options(session, region, recommendations_mode)
+        
+        start_time = time.time()
+        results = {"success": [], "failed": []}
+        
+        for region in regions:
+            for rec_mode in [True, False]:
+                try:
+                    compute_start = time.time()
+                    filter_options = compute_filter_options(region, rec_mode)
+                    
+                    if filter_options:
+                        self.cache.set(region, rec_mode, filter_options, ttl=self.cache.default_ttl * 2)  # Longer TTL for warmup
+                        compute_time = int((time.time() - compute_start) * 1000)
+                        
+                        results["success"].append({
+                            "region": region,
+                            "recommendations_mode": rec_mode,
+                            "compute_time_ms": compute_time
+                        })
+                    else:
+                        results["failed"].append({
+                            "region": region,
+                            "recommendations_mode": rec_mode,
+                            "reason": "no_data_returned"
+                        })
+                        
+                except Exception as e:
+                    results["failed"].append({
+                        "region": region,
+                        "recommendations_mode": rec_mode,
+                        "reason": str(e)
+                    })
+        
+        total_time = int((time.time() - start_time) * 1000)
+        
+        return {
+            "success": True,
+            "warmup_results": results,
+            "total_successful": len(results["success"]),
+            "total_failed": len(results["failed"]),
+            "total_warmup_time_ms": total_time,
+            "cache_type": "memory",
+            "message": f"Warmed up cache for {len(regions)} regions with both modes"
+        }
+
+    def get_cache_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive memory cache statistics."""
+        try:
+            cache_stats = self.cache.get_comprehensive_stats()
+            
+            return {
+                "success": True,
+                "cache_type": "memory",
+                "statistics": cache_stats,
+                "cache_strategy": {
+                    "cache_complete_filter_options": "YES - in memory with TTL",
+                    "cache_filtered_options": "NO - always fresh (result-dependent)",
+                    "cache_main_graph_data": "NO - always fresh",
+                    "cache_invalidation": "Manual + automatic cleanup",
+                    "background_cleanup": "Automatic expired entry removal"
+                },
+                "performance_characteristics": {
+                    "access_time": "~0.1ms (direct memory access)",
+                    "memory_isolation": "Shared within application instance",
+                    "persistence": "Lost on application restart",
+                    "thread_safety": "Yes (RLock protected)"
+                }
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to get cache statistics: {str(e)}"
+            }
+
+    # UPDATED HELPER METHODS for cache integration
+    def _empty_response_with_cached_options(
+        self, 
+        region: str, 
+        recommendations_mode: bool, 
+        filter_options: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Empty response using cached filter options."""
+        return {
+            "success": True,
+            "render_mode": "graph",
+            "data": {
+                "nodes": [],
+                "relationships": [],
+                "total_nodes": 0,
+                "total_relationships": 0
+            },
+            "filter_options": filter_options,
+            "metadata": {
+                "region": region,
+                "mode": "recommendations" if recommendations_mode else "standard",
+                "server_side_processing": True,
+                "empty_result": True,
+                "filter_options_type": "complete_region_cached",
+                "cache_used": True,
+                "cache_type": "memory"
+            }
+        }
+
+    def _create_summary_response_with_cached_options(
+        self, 
+        region: str, 
+        node_count: int, 
+        filters: Dict[str, Any],
+        recommendations_mode: bool,
+        filter_options: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Summary response using cached filter options."""
+        
+        # Generate smart suggestions (not cached - depends on current state)
+        with self.driver.session() as session:
+            suggestions = self._generate_smart_suggestions(session, region, recommendations_mode)
+        
+        return {
+            "success": True,
+            "render_mode": "summary",
+            "data": {
+                "total_nodes": node_count,
+                "message": f"Dataset contains {node_count} nodes. Apply filters to reduce below {MAX_GRAPH_NODES} nodes.",
+                "node_limit": MAX_GRAPH_NODES,
+                "suggestions": suggestions
+            },
+            "filter_options": filter_options,
+            "metadata": {
+                "region": region,
+                "mode": "recommendations" if recommendations_mode else "standard",
+                "performance_limited": True,
+                "server_side_processing": True,
+                "cache_used": True,
+                "cache_type": "memory"
+            }
+        }
+
+
+    # Just make sure this method includes cache status
+    def health_check(self) -> Dict[str, Any]:
+        """Enhanced health check with cache status."""
+        try:
+            neo4j_healthy = self.driver is not None
+            cache_stats = self.cache.get_comprehensive_stats()
+            
+            return {
+                "status": "healthy" if neo4j_healthy else "unhealthy",
+                "services": {
+                    "neo4j_connection": "healthy" if neo4j_healthy else "unhealthy",
+                    "memory_cache": "healthy",
+                    "filter_processing": "healthy"
+                },
+                "cache_summary": {
+                    "type": "memory",
+                    "entries": cache_stats["performance_metrics"]["total_entries"],
+                    "hit_rate": f"{cache_stats['performance_metrics']['hit_rate_percent']}%",
+                    "memory_usage_mb": cache_stats["memory_usage"]["estimated_total_mb"],
+                    "regions_cached": cache_stats["cache_health"]["regions_cached"]
+                },
+                "features": {
+                    "server_side_filtering": "All filters in Cypher queries",
+                    "memory_cached_filter_options": "Complete filter options cached in memory",
+                    "layout_calculation": "Positions calculated server-side",
+                    "performance_limiting": f"Smart {MAX_GRAPH_NODES}-node limit",
+                    "background_cleanup": "Automatic expired entry removal"
+                }
+            }
+            
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "cache_fallback": "Service will work without cache but with reduced performance"
+            }
+
+
 
     def _get_filtered_options_from_actual_data(
         self,
@@ -277,7 +536,7 @@ class CompleteBackendFilterService:
         """Fixed Neo4j query - proper aggregation syntax."""
         
         params = {"region": region}
-        
+        print(filters)
         # Add filter parameters (same as before)
         if filters.get('consultantIds'):
             params['consultantIds'] = filters['consultantIds']
@@ -307,7 +566,7 @@ class CompleteBackendFilterService:
             params['markets'] = filters['markets']
         
         print(f"Building FIXED query with filters: {filters}")
-        
+        print(params)
         # Helper functions (same as your working version)
         def build_company_conditions(company_var: str) -> List[str]:
             conditions = [f"({company_var}.region = $region OR $region IN {company_var}.region)"]

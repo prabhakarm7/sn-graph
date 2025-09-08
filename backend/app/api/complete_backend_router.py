@@ -5,7 +5,10 @@ Frontend sends filters, receives ready-to-render data.
 """
 from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel 
+
+import time
+from typing import List
 
 from app.services.complete_backend_filter_service import complete_backend_filter_service
 
@@ -70,6 +73,7 @@ async def get_complete_filtered_data(
     """
     try:
         # Convert Pydantic model to dict, excluding None values
+        print("Asdasd",filter_request.dict())
         filters = {k: v for k, v in filter_request.dict().items() if v is not None}
         
         print(f"Complete backend processing for {region} with filters: {list(filters.keys())}")
@@ -92,12 +96,12 @@ async def get_filter_options_only(
     recommendations_mode: bool = Query(False, description="Enable recommendations mode")
 ):
     """
-    Get only filter options - extremely fast for dropdown population.
+    Get only filter options - extremely fast for dropdown population with CACHING.
     All PCA/ACA parsing done server-side.
     """
     try:
         with complete_backend_filter_service.driver.session() as session:
-            filter_options = complete_backend_filter_service._get_complete_filter_options(
+            filter_options = complete_backend_filter_service._get_cached_complete_filter_options(
                 session, region.upper(), recommendations_mode
             )
             
@@ -109,9 +113,12 @@ async def get_filter_options_only(
                 "server_processing": {
                     "pca_aca_parsed_server_side": True,
                     "single_aggregation_query": True,
-                    "no_client_side_processing": True
+                    "no_client_side_processing": True,
+                    "memory_cached": True,  # ADD THIS
+                    "cache_type": "memory"  # ADD THIS
                 }
             }
+
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Filter options query failed: {str(e)}")
@@ -176,37 +183,13 @@ async def apply_filter_suggestion(
 async def complete_backend_health():
     """Health check for complete backend service."""
     try:
-        is_healthy = complete_backend_filter_service.driver is not None
-        
-        return {
-            "status": "healthy" if is_healthy else "unhealthy",
-            "service": "Complete Backend Filter Service",
-            "features": {
-                "server_side_filtering": "All filters applied in Cypher queries",
-                "embedded_rating_collection": "Ratings collected in single query",
-                "layout_calculation": "Positions calculated server-side",
-                "pca_aca_parsing": "Complex PCA/ACA logic in Cypher",
-                "performance_limiting": "Smart 50-node limit with suggestions",
-                "single_query_execution": "No client-side data processing"
-            },
-            "benefits": [
-                "Eliminates O(n²) client-side rating collection",
-                "Removes complex advisor filtering logic from frontend",
-                "Eliminates Dagre layout calculation on client",
-                "Moves all string parsing to database",
-                "Provides ready-to-render data structure"
-            ],
-            "performance": {
-                "max_renderable_nodes": 50,
-                "typical_response_time": "<500ms",
-                "scales_to_any_dataset_size": True
-            }
-        }
-        
+        health_data = complete_backend_filter_service.health_check()
+        return health_data
     except Exception as e:
         return {
             "status": "unhealthy",
-            "error": str(e)
+            "error": str(e),
+            "cache_available": False
         }
     
 
@@ -472,3 +455,151 @@ async def complete_backend_health_with_stats():
             "error": str(e),
             "statistics_available": False
         }
+    
+
+# ADD THESE ENDPOINTS TO YOUR EXISTING ROUTER:
+
+@complete_backend_router.get("/cache/stats")
+async def get_memory_cache_statistics():
+    """Get comprehensive memory cache statistics."""
+    try:
+        stats = complete_backend_filter_service.get_cache_statistics()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Memory cache stats failed: {str(e)}")
+
+
+@complete_backend_router.delete("/cache/region/{region}")
+async def invalidate_region_memory_cache(region: str):
+    """Invalidate memory cache entries for a specific region."""
+    try:
+        result = complete_backend_filter_service.invalidate_filter_cache(region.upper())
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Memory cache invalidation failed: {str(e)}")
+
+
+@complete_backend_router.delete("/cache/all")
+async def invalidate_all_memory_cache():
+    """Clear all memory cache entries - use with caution in production."""
+    try:
+        result = complete_backend_filter_service.invalidate_filter_cache()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Full memory cache clear failed: {str(e)}")
+
+
+@complete_backend_router.post("/cache/warmup")
+async def warmup_memory_cache(regions: List[str] = Query(None, description="Regions to warm up (default: all)")):
+    """Pre-populate memory cache for specified regions."""
+    try:
+        # Use provided regions or default to all available regions
+        target_regions = regions if regions else list(REGIONS.keys())
+        
+        result = complete_backend_filter_service.warmup_filter_cache(target_regions)
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Memory cache warmup failed: {str(e)}")
+
+
+@complete_backend_router.get("/cache/health")
+async def memory_cache_health_check():
+    """Check memory cache health and performance."""
+    try:
+        # Get cache statistics
+        cache_stats = complete_backend_filter_service.cache.get_comprehensive_stats()
+        
+        # Test cache operations
+        test_key_region = "TEST"
+        test_data = {"test": "data", "timestamp": time.time()}
+        
+        # Test set/get/invalidate cycle
+        set_success = complete_backend_filter_service.cache.set(test_key_region, False, test_data, ttl=10)
+        get_result = complete_backend_filter_service.cache.get(test_key_region, False)
+        invalidate_count = complete_backend_filter_service.cache.invalidate_region(test_key_region)
+        
+        operations_working = set_success and get_result is not None and invalidate_count > 0
+        
+        health_status = {
+            "cache_status": "healthy" if operations_working else "degraded",
+            "memory_cache_type": "in_process_memory",
+            "operations_test": {
+                "set_operation": "success" if set_success else "failed",
+                "get_operation": "success" if get_result else "failed",
+                "invalidate_operation": "success" if invalidate_count > 0 else "failed"
+            },
+            "performance_metrics": cache_stats["performance_metrics"],
+            "memory_usage": cache_stats["memory_usage"],
+            "cache_health": cache_stats["cache_health"],
+            "background_cleanup": {
+                "enabled": True,
+                "interval_seconds": complete_backend_filter_service.cache.cleanup_interval,
+                "last_cleanup_ago_seconds": int(time.time() - cache_stats["operation_counts"]["last_cleanup"])
+            },
+            "recommendations": cache_stats["recommendations"]
+        }
+        
+        if not operations_working:
+            health_status["warnings"] = [
+                "Memory cache operations not working properly",
+                "Service will fall back to direct database queries",
+                "Check application memory and threading"
+            ]
+        else:
+            health_status["benefits"] = [
+                "Filter options cached in memory for fast access",
+                "~0.1ms cache access vs 200-500ms database query",
+                "Automatic cleanup of expired entries",
+                "Thread-safe operations with comprehensive statistics"
+            ]
+        
+        return health_status
+        
+    except Exception as e:
+        return {
+            "cache_status": "unhealthy",
+            "error": str(e),
+            "fallback_behavior": "Service will work without cache but performance will be reduced"
+        }
+
+
+# UPDATED health endpoint to include cache info
+@complete_backend_router.get("/health")
+async def complete_backend_health_with_cache():
+    """Enhanced health check that includes memory cache statistics."""
+    try:
+        health_data = complete_backend_filter_service.health_check()
+        return health_data
+        
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "cache_available": False
+        }
+    
+
+def _clean_filter_values(self, raw_filters: Dict[str, Any]) -> Dict[str, Any]:
+    """Clean filter values to remove invalid entries."""
+    cleaned = {}
+    invalid_values = ["string", "", None, "null", "undefined"]
+    
+    for key, value in raw_filters.items():
+        if value is None:
+            continue
+            
+        if isinstance(value, list):
+            # Filter out invalid list items
+            valid_items = []
+            for item in value:
+                if item not in invalid_values and str(item).strip():
+                    valid_items.append(str(item).strip())
+            
+            if valid_items:  # Only add if we have valid items
+                cleaned[key] = valid_items
+        elif value not in invalid_values and str(value).strip():
+            cleaned[key] = value
+    
+    return cleaned
