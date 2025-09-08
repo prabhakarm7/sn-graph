@@ -390,103 +390,105 @@ class CompleteBackendFilterService:
         recommendations_mode: bool
     ) -> Dict[str, Any]:
         """
-        Extract filter options from the actual result nodes only.
-        This ensures dropdowns show only values present in current filtered dataset.
+        Extract filter options from the actual result nodes only with duplicate removal.
+        This ensures dropdowns show only unique values present in current filtered dataset.
         """
         if not nodes:
             return self._empty_filter_options(recommendations_mode)
         
-        # Extract unique values from actual nodes found
-        consultants = []
-        field_consultants = []
-        companies = []
-        products = []
-        incumbent_products = []
+        # Use sets to automatically handle duplicates for simple values
         channels = set()
         sales_regions = set()
         asset_classes = set()
         client_advisors = set()
         consultant_advisors = set()
         
+        # Use dictionaries to handle duplicates for entity objects (by name)
+        consultants_dict = {}
+        field_consultants_dict = {}
+        companies_dict = {}
+        products_dict = {}
+        incumbent_products_dict = {}
+        
         for node in nodes:
             node_type = node.get('type')
             data = node.get('data', {})
             
             if node_type == 'CONSULTANT' and data.get('name'):
-                consultants.append({'id': data['name'], 'name': data['name']})
-                # Extract advisor information
-                if data.get('pca'):
-                    if isinstance(data['pca'], list):
-                        consultant_advisors.update(data['pca'])
-                    else:
-                        consultant_advisors.add(data['pca'])
-                if data.get('consultant_advisor'):
-                    if isinstance(data['consultant_advisor'], list):
-                        consultant_advisors.update(data['consultant_advisor'])
-                    else:
-                        consultant_advisors.add(data['consultant_advisor'])
+                name = data['name'].strip()
+                if name and not self._is_malformed_name(name):
+                    # Use name as key to avoid duplicates
+                    consultants_dict[name] = {'id': name, 'name': name}
                     
+                    # Extract advisor information with duplicate handling
+                    if data.get('pca'):
+                        self._add_to_advisor_set(data['pca'], consultant_advisors)
+                    if data.get('consultant_advisor'):
+                        self._add_to_advisor_set(data['consultant_advisor'], consultant_advisors)
+                        
             elif node_type == 'FIELD_CONSULTANT' and data.get('name'):
-                field_consultants.append({'id': data['name'], 'name': data['name']})
-                
+                name = data['name'].strip()
+                if name and not self._is_malformed_name(name):
+                    field_consultants_dict[name] = {'id': name, 'name': name}
+                    
             elif node_type == 'COMPANY' and data.get('name'):
-                companies.append({'id': data['name'], 'name': data['name']})
-                # Extract company attributes
-                if data.get('channel'):
-                    if isinstance(data['channel'], list):
-                        channels.update(data['channel'])
-                    else:
-                        channels.add(data['channel'])
-                if data.get('sales_region'):
-                    if isinstance(data['sales_region'], list):
-                        sales_regions.update(data['sales_region'])
-                    else:
-                        sales_regions.add(data['sales_region'])
-                # Extract client advisors from company data
-                if data.get('pca'):
-                    if isinstance(data['pca'], list):
-                        client_advisors.update(data['pca'])
-                    else:
-                        client_advisors.add(data['pca'])
-                if data.get('aca'):
-                    if isinstance(data['aca'], list):
-                        client_advisors.update(data['aca'])
-                    else:
-                        client_advisors.add(data['aca'])
+                name = data['name'].strip()
+                if name and not self._is_malformed_name(name):
+                    companies_dict[name] = {'id': name, 'name': name}
                     
+                    # Extract company attributes with duplicate handling
+                    if data.get('channel'):
+                        self._add_to_string_set(data['channel'], channels)
+                    if data.get('sales_region'):
+                        self._add_to_string_set(data['sales_region'], sales_regions)
+                        
+                    # Extract client advisors with duplicate handling
+                    if data.get('pca'):
+                        self._add_to_advisor_set(data['pca'], client_advisors)
+                    if data.get('aca'):
+                        self._add_to_advisor_set(data['aca'], client_advisors)
+                        
             elif node_type == 'PRODUCT' and data.get('name'):
-                products.append({'id': data['name'], 'name': data['name']})
-                if data.get('asset_class'):
-                    if isinstance(data['asset_class'], list):
-                        asset_classes.update(data['asset_class'])
-                    else:
-                        asset_classes.add(data['asset_class'])
+                name = data['name'].strip()
+                if name and not self._is_malformed_name(name):
+                    products_dict[name] = {'id': name, 'name': name}
                     
+                    if data.get('asset_class'):
+                        self._add_to_string_set(data['asset_class'], asset_classes)
+                        
             elif node_type == 'INCUMBENT_PRODUCT' and data.get('name'):
-                incumbent_products.append({'id': data['name'], 'name': data['name']})
-                if data.get('asset_class'):
-                    if isinstance(data['asset_class'], list):
-                        asset_classes.update(data['asset_class'])
-                    else:
-                        asset_classes.add(data['asset_class'])
+                name = data['name'].strip()
+                if name and not self._is_malformed_name(name):
+                    incumbent_products_dict[name] = {'id': name, 'name': name}
+                    
+                    if data.get('asset_class'):
+                        self._add_to_string_set(data['asset_class'], asset_classes)
         
-        # Clean and sort the collected values
-        def clean_string_set(string_set):
-            """Remove None values and empty strings, sort result"""
-            cleaned = {str(item).strip() for item in string_set if item and str(item).strip()}
-            return sorted(list(cleaned))
+        # Convert dictionaries to sorted lists (already deduplicated)
+        consultants = sorted(list(consultants_dict.values()), key=lambda x: x['name'])
+        field_consultants = sorted(list(field_consultants_dict.values()), key=lambda x: x['name'])
+        companies = sorted(list(companies_dict.values()), key=lambda x: x['name'])
+        products = sorted(list(products_dict.values()), key=lambda x: x['name'])
+        incumbent_products = sorted(list(incumbent_products_dict.values()), key=lambda x: x['name'])
         
-        # Build filtered options structure
+        # Convert sets to sorted lists and apply limits
+        markets = sorted(list(sales_regions))[:MAX_FILTER_RESULTS]
+        channels_list = sorted(list(channels))[:MAX_FILTER_RESULTS]
+        asset_classes_list = sorted(list(asset_classes))[:MAX_FILTER_RESULTS]
+        client_advisors_list = sorted(list(client_advisors))[:MAX_FILTER_RESULTS]
+        consultant_advisors_list = sorted(list(consultant_advisors))[:MAX_FILTER_RESULTS]
+        
+        # Build filtered options structure with guaranteed uniqueness
         filtered_options = {
-            "markets": clean_string_set(sales_regions),
-            "channels": clean_string_set(channels),
-            "asset_classes": clean_string_set(asset_classes),
-            "consultants": consultants,
-            "field_consultants": field_consultants,
-            "companies": companies,
-            "products": products,
-            "client_advisors": clean_string_set(client_advisors),
-            "consultant_advisors": clean_string_set(consultant_advisors),
+            "markets": markets,
+            "channels": channels_list,
+            "asset_classes": asset_classes_list,
+            "consultants": consultants[:MAX_FILTER_RESULTS],
+            "field_consultants": field_consultants[:MAX_FILTER_RESULTS],
+            "companies": companies[:MAX_FILTER_RESULTS],
+            "products": products[:MAX_FILTER_RESULTS],
+            "client_advisors": client_advisors_list,
+            "consultant_advisors": consultant_advisors_list,
             # Static options that don't change based on data
             "ratings": ["Positive", "Negative", "Neutral", "Introduced"],
             "mandate_statuses": ["Active", "At Risk", "Conversion in Progress"],
@@ -494,12 +496,60 @@ class CompleteBackendFilterService:
         }
         
         if recommendations_mode:
-            filtered_options["incumbent_products"] = incumbent_products
+            filtered_options["incumbent_products"] = incumbent_products[:MAX_FILTER_RESULTS]
         
-        print(f"Filtered options extracted: {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in filtered_options.items()]}")
+        print(f"Filtered options extracted (duplicates removed): {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in filtered_options.items()]}")
         
         return filtered_options
 
+    # Helper methods for duplicate handling
+    def _add_to_string_set(self, value, target_set: set):
+        """Add string or list of strings to set, handling duplicates and malformed values."""
+        if value is None:
+            return
+            
+        if isinstance(value, list):
+            for item in value:
+                if item and str(item).strip():
+                    cleaned = str(item).strip()
+                    if not self._is_malformed_value(cleaned):
+                        # Handle comma-separated values
+                        if ',' in cleaned:
+                            for part in cleaned.split(','):
+                                part = part.strip()
+                                if part and not self._is_malformed_value(part):
+                                    target_set.add(part)
+                        else:
+                            target_set.add(cleaned)
+        else:
+            if str(value).strip():
+                cleaned = str(value).strip()
+                if not self._is_malformed_value(cleaned):
+                    # Handle comma-separated values
+                    if ',' in cleaned:
+                        for part in cleaned.split(','):
+                            part = part.strip()
+                            if part and not self._is_malformed_value(part):
+                                target_set.add(part)
+                    else:
+                        target_set.add(cleaned)
+
+    def _add_to_advisor_set(self, value, target_set: set):
+        """Add advisor values to set with special handling for advisor data."""
+        if value is None:
+            return
+            
+        if isinstance(value, list):
+            for item in value:
+                if item and str(item).strip():
+                    cleaned = str(item).strip()
+                    if not self._is_malformed_value(cleaned) and len(cleaned) > 1:  # Advisor names should be longer than 1 char
+                        target_set.add(cleaned)
+        else:
+            if str(value).strip():
+                cleaned = str(value).strip()
+                if not self._is_malformed_value(cleaned) and len(cleaned) > 1:
+                    target_set.add(cleaned)
 
     def _empty_response(self, region: str, recommendations_mode: bool) -> Dict[str, Any]:
         """
@@ -714,8 +764,26 @@ class CompleteBackendFilterService:
                         relType: type(rel),
                         sourceId: startNode(rel).id,
                         targetId: endNode(rel).id,
+                        rankgroup: rel.rankgroup,
+                        rankvalue: rel.rankvalue,
+                        rankorder: rel.rankorder,
+                        rating_change: rel.rating_change,
+                        level_of_influence: rel.level_of_influence,
                         mandate_status: rel.mandate_status,
-                        level_of_influence: rel.level_of_influence
+                        consultant: rel.consultant,
+                        manager: rel.manager,
+                        commitment_market_value: rel.commitment_market_value,
+                        manager_since_date: rel.manager_since_date,
+                        multi_mandate_manager: rel.multi_mandate_manager,
+                        annualised_alpha_summary: rel.annualised_alpha_summary,
+                        batting_average_summary: rel.batting_average_summary,
+                        downside_market_capture_summary: rel.downside_market_capture_summary,
+                        information_ratio_summary: rel.information_ratio_summary,
+                        opportunity_type: rel.opportunity_type,
+                        returns: rel.returns,
+                        returns_summary: rel.returns_summary,
+                        standard_deviation_summary: rel.standard_deviation_summary,
+                        upside_market_capture_summary: rel.upside_market_capture_summary
                     }}
                 }}]
             }} AS GraphData
@@ -792,8 +860,26 @@ class CompleteBackendFilterService:
                         relType: type(rel),
                         sourceId: startNode(rel).id,
                         targetId: endNode(rel).id,
+                        mrankgroup: rel.rankgroup,
+                        rankvalue: rel.rankvalue,
+                        rankorder: rel.rankorder,
+                        rating_change: rel.rating_change,
+                        level_of_influence: rel.level_of_influence,
                         mandate_status: rel.mandate_status,
-                        level_of_influence: rel.level_of_influence
+                        consultant: rel.consultant,
+                        manager: rel.manager,
+                        commitment_market_value: rel.commitment_market_value,
+                        manager_since_date: rel.manager_since_date,
+                        multi_mandate_manager: rel.multi_mandate_manager,
+                        annualised_alpha_summary: rel.annualised_alpha_summary,
+                        batting_average_summary: rel.batting_average_summary,
+                        downside_market_capture_summary: rel.downside_market_capture_summary,
+                        information_ratio_summary: rel.information_ratio_summary,
+                        opportunity_type: rel.opportunity_type,
+                        returns: rel.returns,
+                        returns_summary: rel.returns_summary,
+                        standard_deviation_summary: rel.standard_deviation_summary,
+                        upside_market_capture_summary: rel.upside_market_capture_summary
                     }}
                 }}]
             }} AS GraphData
