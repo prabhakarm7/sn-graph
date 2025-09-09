@@ -730,12 +730,31 @@ class CompleteBackendFilterService:
                 COLLECT(DISTINCT h1) + COLLECT(DISTINCT h2) + COLLECT(DISTINCT h3) + 
                 COLLECT(DISTINCT r1) + COLLECT(DISTINCT r2) + COLLECT(DISTINCT r3) AS all_rels
             
-            WITH consultants + field_consultants + companies + incumbent_products + products AS allNodes, 
-                all_rels
+            // COLLECT RATINGS ONLY FOR PRODUCTS & INCUMBENT_PRODUCTS
+            UNWIND (products + incumbent_products) AS target_product
+            OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(target_product)
             
-            // Filter out nulls and invalid nodes
+            WITH consultants, field_consultants, companies, incumbent_products, products, all_rels,
+                target_product.id AS product_id,
+                COLLECT({{
+                    consultant: rating_consultant.name,
+                    rankgroup: rating_rel.rankgroup,
+                    rankvalue: rating_rel.rankvalue
+                }}) AS product_ratings
+            
+            WITH consultants, field_consultants, companies, incumbent_products, products, all_rels,
+                COLLECT({{
+                    product_id: product_id,
+                    ratings: [rating IN product_ratings WHERE rating.consultant IS NOT NULL | rating]
+                }}) AS all_ratings_map
+            
+            WITH consultants + field_consultants + companies + incumbent_products + products AS allNodes, 
+                all_rels, all_ratings_map
+            
+            // Filter out nulls
             WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
-                [rel IN all_rels WHERE rel IS NOT NULL] AS filteredRels
+                [rel IN all_rels WHERE rel IS NOT NULL] AS filteredRels,
+                all_ratings_map
             
             RETURN {{
                 nodes: [node IN filteredNodes | {{
@@ -752,7 +771,13 @@ class CompleteBackendFilterService:
                         pca: node.pca,
                         aca: node.aca,
                         consultant_advisor: node.consultant_advisor,
-                        mandate_status: node.mandate_status
+                        mandate_status: node.mandate_status,
+                        ratings: CASE 
+                            WHEN labels(node)[0] IN ['PRODUCT', 'INCUMBENT_PRODUCT'] THEN
+                                HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
+                            ELSE
+                                null
+                        END
                     }}
                 }}],
                 relationships: [rel IN filteredRels WHERE type(rel) <> 'RATES' | {{
@@ -828,10 +853,29 @@ class CompleteBackendFilterService:
                 COLLECT(DISTINCT f1) + COLLECT(DISTINCT i1) + COLLECT(DISTINCT i2) + 
                 COLLECT(DISTINCT g1) + COLLECT(DISTINCT g2) + COLLECT(DISTINCT g3) AS all_rels
             
-            WITH consultants + field_consultants + companies + products AS allNodes, all_rels
+            // RATINGS ONLY FOR PRODUCTS
+            UNWIND products AS target_product
+            OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(target_product)
+            
+            WITH consultants, field_consultants, companies, products, all_rels,
+                target_product.id AS product_id,
+                COLLECT({{
+                    consultant: rating_consultant.name,
+                    rankgroup: rating_rel.rankgroup,
+                    rankvalue: rating_rel.rankvalue
+                }}) AS product_ratings
+            
+            WITH consultants, field_consultants, companies, products, all_rels,
+                COLLECT({{
+                    product_id: product_id,
+                    ratings: [rating IN product_ratings WHERE rating.consultant IS NOT NULL | rating]
+                }}) AS all_ratings_map
+
+            WITH consultants + field_consultants + companies + products AS allNodes, all_rels, all_ratings_map
             
             WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
-                [rel IN all_rels WHERE rel IS NOT NULL] AS filteredRels
+            [rel IN all_rels WHERE rel IS NOT NULL] AS filteredRels,
+            all_ratings_map
             
             RETURN {{
                 nodes: [node IN filteredNodes | {{
@@ -848,7 +892,13 @@ class CompleteBackendFilterService:
                         pca: node.pca,
                         aca: node.aca,
                         consultant_advisor: node.consultant_advisor,
-                        mandate_status: node.mandate_status
+                        mandate_status: node.mandate_status,
+                        ratings: CASE 
+                            WHEN labels(node)[0] = 'PRODUCT' THEN
+                                HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
+                            ELSE
+                                null
+                        END
                     }}
                 }}],
                 relationships: [rel IN filteredRels WHERE type(rel) <> 'RATES' | {{
