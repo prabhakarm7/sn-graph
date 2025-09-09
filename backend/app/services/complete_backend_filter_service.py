@@ -54,7 +54,7 @@ class CompleteBackendFilterService:
         try:
             with self.driver.session() as session:
                 # Step 1: Build complete query with all filters applied (UNCHANGED)
-                query, params = self._build_complete_query(region, filters, recommendations_mode)
+                query, params = self._build_optimized_union_query(region, filters, recommendations_mode)
                 print(f"Executing complete backend query for {region} (filters applied: {has_filters_applied})")
                 print("adasdasd",query)
                 print(params)
@@ -773,10 +773,10 @@ class CompleteBackendFilterService:
                         consultant_advisor: node.consultant_advisor,
                         mandate_status: node.mandate_status,
                         ratings: CASE 
-                            WHEN labels(node)[0] IN ['PRODUCT', 'INCUMBENT_PRODUCT'] THEN
-                                HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
-                            ELSE
-                                null
+                        WHEN labels(node)[0] IN ['PRODUCT', 'INCUMBENT_PRODUCT'] THEN
+                            HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
+                        ELSE
+                            null
                         END
                     }}
                 }}],
@@ -936,6 +936,410 @@ class CompleteBackendFilterService:
             """
         
         return optimized_query, params
+
+    def _build_optimized_union_query(
+        self, 
+        region: str, 
+        filters: Dict[str, Any],
+        recommendations_mode: bool
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        OPTIMIZED: Single CALL with UNION inside - best of both approaches.
+        """
+        
+        params = {"region": region}
+        
+        # Add filter parameters
+        if filters.get('consultantIds'):
+            params['consultantIds'] = filters['consultantIds']
+        if filters.get('clientIds'):
+            params['clientIds'] = filters['clientIds']
+        if filters.get('productIds'):
+            params['productIds'] = filters['productIds']
+        if filters.get('fieldConsultantIds'):
+            params['fieldConsultantIds'] = filters['fieldConsultantIds']
+        if filters.get('channels'):
+            params['channels'] = filters['channels']
+        if filters.get('assetClasses'):
+            params['assetClasses'] = filters['assetClasses']
+        if filters.get('sales_regions'):
+            params['salesRegions'] = filters['sales_regions']
+        if filters.get('mandateStatuses'):
+            params['mandateStatuses'] = filters['mandateStatuses']
+        if filters.get('clientAdvisorIds'):
+            params['clientAdvisorIds'] = filters['clientAdvisorIds']
+        if filters.get('consultantAdvisorIds'):
+            params['consultantAdvisorIds'] = filters['consultantAdvisorIds']
+        if filters.get('ratings'):
+            params['ratings'] = filters['ratings']
+        if filters.get('influence_levels'):
+            params['influenceLevels'] = filters['influence_levels']
+        if filters.get('markets'):
+            params['markets'] = filters['markets']
+        
+        # Helper functions (same as before)
+        def build_company_conditions(company_var: str) -> List[str]:
+            conditions = [f"({company_var}.region = $region OR $region IN {company_var}.region)"]
+            
+            if filters.get('clientIds'):
+                conditions.append(f"{company_var}.name IN $clientIds")
+            if filters.get('channels'):
+                conditions.append(f"""ANY(ch IN $channels WHERE 
+                    ch = {company_var}.channel OR ch IN {company_var}.channel)""")
+            if filters.get('sales_regions'):
+                conditions.append(f"""ANY(sr IN $salesRegions WHERE 
+                    sr = {company_var}.sales_region OR sr IN {company_var}.sales_region)""")
+            if filters.get('markets'):
+                conditions.append(f"""ANY(mkt IN $markets WHERE 
+                    mkt = {company_var}.sales_region OR mkt IN {company_var}.sales_region)""")
+            if filters.get('clientAdvisorIds'):
+                conditions.append(f"""ANY(advisor IN $clientAdvisorIds WHERE 
+                    advisor = {company_var}.pca OR advisor IN {company_var}.pca OR
+                    advisor = {company_var}.aca OR advisor IN {company_var}.aca)""")
+            
+            return conditions
+        
+        def build_consultant_conditions(consultant_var: str) -> List[str]:
+            conditions = []
+            if filters.get('consultantIds'):
+                conditions.append(f"{consultant_var}.name IN $consultantIds")
+            if filters.get('consultantAdvisorIds'):
+                conditions.append(f"""ANY(advisor IN $consultantAdvisorIds WHERE 
+                    advisor = {consultant_var}.pca OR advisor IN {consultant_var}.pca OR
+                    advisor = {consultant_var}.consultant_advisor OR advisor IN {consultant_var}.consultant_advisor)""")
+            return conditions
+        
+        def build_product_conditions(product_var: str) -> List[str]:
+            conditions = []
+            if filters.get('productIds'):
+                conditions.append(f"{product_var}.name IN $productIds")
+            if filters.get('assetClasses'):
+                conditions.append(f"""ANY(ac IN $assetClasses WHERE 
+                    ac = {product_var}.asset_class OR ac IN {product_var}.asset_class)""")
+            return conditions
+        
+        def build_field_consultant_conditions(fc_var: str) -> List[str]:
+            conditions = []
+            if filters.get('fieldConsultantIds'):
+                conditions.append(f"{fc_var}.name IN $fieldConsultantIds")
+            return conditions
+        
+        def build_mandate_conditions(rel_var: str) -> List[str]:
+            conditions = []
+            if filters.get('mandateStatuses'):
+                conditions.append(f"""ANY(ms IN $mandateStatuses WHERE 
+                    ms = {rel_var}.mandate_status OR ms IN {rel_var}.mandate_status)""")
+            return conditions
+        
+        def build_influence_conditions(rel_var: str) -> List[str]:
+            conditions = []
+            if filters.get('influence_levels'):
+                conditions.append(f"""ANY(il IN $influenceLevels WHERE 
+                    il = {rel_var}.level_of_influence OR il IN {rel_var}.level_of_influence)""")
+            return conditions
+        
+        def combine_conditions(condition_lists: List[List[str]]) -> str:
+            all_conditions = []
+            for condition_list in condition_lists:
+                all_conditions.extend(condition_list)
+            return " AND ".join(all_conditions) if all_conditions else "true"
+        
+        if recommendations_mode:
+            # SINGLE CALL WITH UNION FOR RECOMMENDATIONS MODE
+            single_call_query = f"""
+            CALL {{
+                // Path 1: Full consultant chain
+                MATCH (cons:CONSULTANT)-[emp:EMPLOYS]->(fc:FIELD_CONSULTANT)-[cov:COVERS]->(c:COMPANY)
+                    -[owns:OWNS]->(ip:INCUMBENT_PRODUCT)-[rec:BI_RECOMMENDS]->(p:PRODUCT)
+                WHERE {combine_conditions([
+                    build_company_conditions('c'),
+                    build_consultant_conditions('cons'),
+                    build_product_conditions('p'),
+                    build_field_consultant_conditions('fc'),
+                    build_mandate_conditions('owns'),
+                    build_influence_conditions('emp'),
+                    build_influence_conditions('cov')
+                ])}
+                RETURN cons as consultant, fc as field_consultant, c as company, ip as incumbent_product, p as product,
+                    emp as rel1, cov as rel2, owns as rel3, rec as rel4
+                
+                UNION
+                
+                // Path 2: Direct consultant coverage
+                MATCH (cons:CONSULTANT)-[cov:COVERS]->(c:COMPANY)-[owns:OWNS]->(ip:INCUMBENT_PRODUCT)-[rec:BI_RECOMMENDS]->(p:PRODUCT)
+                WHERE {combine_conditions([
+                    build_company_conditions('c'),
+                    build_consultant_conditions('cons'),
+                    build_product_conditions('p'),
+                    build_mandate_conditions('owns'),
+                    build_influence_conditions('cov')
+                ])}
+                RETURN cons as consultant, null as field_consultant, c as company, ip as incumbent_product, p as product,
+                    cov as rel1, null as rel2, owns as rel3, rec as rel4
+                
+                UNION
+                
+                // Path 3: Company standalone
+                MATCH (c:COMPANY)-[owns:OWNS]->(ip:INCUMBENT_PRODUCT)-[rec:BI_RECOMMENDS]->(p:PRODUCT)
+                WHERE {combine_conditions([
+                    build_company_conditions('c'),
+                    build_product_conditions('p'),
+                    build_mandate_conditions('owns')
+                ])}
+                RETURN null as consultant, null as field_consultant, c as company, ip as incumbent_product, p as product,
+                    null as rel1, null as rel2, owns as rel3, rec as rel4
+            }}
+            
+            // Aggregate UNION results from the single CALL
+            WITH 
+                COLLECT(DISTINCT consultant) as all_consultants,
+                COLLECT(DISTINCT field_consultant) as all_field_consultants,
+                COLLECT(DISTINCT company) as all_companies,
+                COLLECT(DISTINCT incumbent_product) as all_incumbent_products,
+                COLLECT(DISTINCT product) as all_products,
+                COLLECT(DISTINCT rel1) + COLLECT(DISTINCT rel2) + COLLECT(DISTINCT rel3) + COLLECT(DISTINCT rel4) as all_relationships
+            
+            // Remove nulls and combine all nodes
+            WITH 
+                [x IN all_consultants WHERE x IS NOT NULL] as consultants,
+                [x IN all_field_consultants WHERE x IS NOT NULL] as field_consultants,
+                [x IN all_companies WHERE x IS NOT NULL] as companies,
+                [x IN all_incumbent_products WHERE x IS NOT NULL] as incumbent_products,
+                [x IN all_products WHERE x IS NOT NULL] as products,
+                [x IN all_relationships WHERE x IS NOT NULL] as relationships
+            
+            WITH consultants + field_consultants + companies + incumbent_products + products as allNodes,
+                relationships,
+                products + incumbent_products as ratable_products
+            
+            // Get ratings efficiently
+            UNWIND ratable_products AS target_product
+            OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(target_product)
+            
+            WITH allNodes, relationships,
+                target_product.id AS product_id,
+                COLLECT({{
+                    consultant: rating_consultant.name,
+                    rankgroup: rating_rel.rankgroup,
+                    rankvalue: rating_rel.rankvalue
+                }}) AS product_ratings
+            
+            WITH allNodes, relationships,
+                COLLECT({{
+                    product_id: product_id,
+                    ratings: [rating IN product_ratings WHERE rating.consultant IS NOT NULL | rating]
+                }}) AS all_ratings_map
+            
+            // Final filtering and formatting
+            WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
+                [rel IN relationships WHERE rel IS NOT NULL] AS filteredRels,
+                all_ratings_map
+            
+            RETURN {{
+                nodes: [node IN filteredNodes | {{
+                    id: node.id,
+                    type: labels(node)[0],
+                    data: {{
+                        id: node.id,
+                        name: coalesce(node.name, node.id),
+                        label: coalesce(node.name, node.id),
+                        region: node.region,
+                        channel: node.channel,
+                        sales_region: node.sales_region,
+                        asset_class: node.asset_class,
+                        pca: node.pca,
+                        aca: node.aca,
+                        consultant_advisor: node.consultant_advisor,
+                        mandate_status: node.mandate_status,
+                        ratings: CASE 
+                            WHEN labels(node)[0] IN ['PRODUCT', 'INCUMBENT_PRODUCT'] THEN
+                                HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
+                            ELSE
+                                null
+                        END
+                    }}
+                }}],
+                relationships: [rel IN filteredRels WHERE type(rel) <> 'RATES' | {{
+                    id: toString(id(rel)),
+                    source: startNode(rel).id,
+                    target: endNode(rel).id,
+                    type: 'custom',
+                    data: {{
+                        relType: type(rel),
+                        sourceId: startNode(rel).id,
+                        targetId: endNode(rel).id,
+                        rankgroup: rel.rankgroup,
+                        rankvalue: rel.rankvalue,
+                        rankorder: rel.rankorder,
+                        rating_change: rel.rating_change,
+                        level_of_influence: rel.level_of_influence,
+                        mandate_status: rel.mandate_status,
+                        consultant: rel.consultant,
+                        manager: rel.manager,
+                        commitment_market_value: rel.commitment_market_value,
+                        manager_since_date: rel.manager_since_date,
+                        multi_mandate_manager: rel.multi_mandate_manager,
+                        annualised_alpha_summary: rel.annualised_alpha_summary,
+                        batting_average_summary: rel.batting_average_summary,
+                        downside_market_capture_summary: rel.downside_market_capture_summary,
+                        information_ratio_summary: rel.information_ratio_summary,
+                        opportunity_type: rel.opportunity_type,
+                        returns: rel.returns,
+                        returns_summary: rel.returns_summary,
+                        standard_deviation_summary: rel.standard_deviation_summary,
+                        upside_market_capture_summary: rel.upside_market_capture_summary
+                    }}
+                }}]
+            }} AS GraphData
+            """
+        
+        else:
+            # SINGLE CALL WITH UNION FOR STANDARD MODE
+            single_call_query = f"""
+            CALL {{
+                // Path 1: Full consultant chain
+                MATCH (cons:CONSULTANT)-[emp:EMPLOYS]->(fc:FIELD_CONSULTANT)-[cov:COVERS]->(c:COMPANY)-[owns:OWNS]->(p:PRODUCT)
+                WHERE {combine_conditions([
+                    build_company_conditions('c'),
+                    build_consultant_conditions('cons'),
+                    build_product_conditions('p'),
+                    build_field_consultant_conditions('fc'),
+                    build_mandate_conditions('owns'),
+                    build_influence_conditions('emp'),
+                    build_influence_conditions('cov')
+                ])}
+                RETURN cons as consultant, fc as field_consultant, c as company, p as product,
+                    emp as rel1, cov as rel2, owns as rel3
+                
+                UNION
+                
+                // Path 2: Direct consultant coverage
+                MATCH (cons:CONSULTANT)-[cov:COVERS]->(c:COMPANY)-[owns:OWNS]->(p:PRODUCT)
+                WHERE {combine_conditions([
+                    build_company_conditions('c'),
+                    build_consultant_conditions('cons'),
+                    build_product_conditions('p'),
+                    build_mandate_conditions('owns'),
+                    build_influence_conditions('cov')
+                ])}
+                RETURN cons as consultant, null as field_consultant, c as company, p as product,
+                    cov as rel1, null as rel2, owns as rel3
+                
+                UNION
+                
+                // Path 3: Company standalone
+                MATCH (c:COMPANY)-[owns:OWNS]->(p:PRODUCT)
+                WHERE {combine_conditions([
+                    build_company_conditions('c'),
+                    build_product_conditions('p'),
+                    build_mandate_conditions('owns')
+                ])}
+                RETURN null as consultant, null as field_consultant, c as company, p as product,
+                    null as rel1, null as rel2, owns as rel3
+            }}
+            
+            // Aggregate UNION results from the single CALL
+            WITH 
+                COLLECT(DISTINCT consultant) as all_consultants,
+                COLLECT(DISTINCT field_consultant) as all_field_consultants,
+                COLLECT(DISTINCT company) as all_companies,
+                COLLECT(DISTINCT product) as all_products,
+                COLLECT(DISTINCT rel1) + COLLECT(DISTINCT rel2) + COLLECT(DISTINCT rel3) as all_relationships
+            
+            // Remove nulls and combine all nodes
+            WITH 
+                [x IN all_consultants WHERE x IS NOT NULL] as consultants,
+                [x IN all_field_consultants WHERE x IS NOT NULL] as field_consultants,
+                [x IN all_companies WHERE x IS NOT NULL] as companies,
+                [x IN all_products WHERE x IS NOT NULL] as products,
+                [x IN all_relationships WHERE x IS NOT NULL] as relationships
+            
+            WITH consultants + field_consultants + companies + products as allNodes,
+                relationships,
+                products as ratable_products
+            
+            // Get ratings efficiently
+            UNWIND ratable_products AS target_product
+            OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(target_product)
+            
+            WITH allNodes, relationships,
+                target_product.id AS product_id,
+                COLLECT({{
+                    consultant: rating_consultant.name,
+                    rankgroup: rating_rel.rankgroup,
+                    rankvalue: rating_rel.rankvalue
+                }}) AS product_ratings
+            
+            WITH allNodes, relationships,
+                COLLECT({{
+                    product_id: product_id,
+                    ratings: [rating IN product_ratings WHERE rating.consultant IS NOT NULL | rating]
+                }}) AS all_ratings_map
+            
+            // Final filtering and formatting
+            WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
+                [rel IN relationships WHERE rel IS NOT NULL] AS filteredRels,
+                all_ratings_map
+            
+            RETURN {{
+                nodes: [node IN filteredNodes | {{
+                    id: node.id,
+                    type: labels(node)[0],
+                    data: {{
+                        id: node.id,
+                        name: coalesce(node.name, node.id),
+                        label: coalesce(node.name, node.id),
+                        region: node.region,
+                        channel: node.channel,
+                        sales_region: node.sales_region,
+                        asset_class: node.asset_class,
+                        pca: node.pca,
+                        aca: node.aca,
+                        consultant_advisor: node.consultant_advisor,
+                        mandate_status: node.mandate_status,
+                        ratings: CASE 
+                            WHEN labels(node)[0] = 'PRODUCT' THEN
+                                HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
+                            ELSE
+                                null
+                        END
+                    }}
+                }}],
+                relationships: [rel IN filteredRels WHERE type(rel) <> 'RATES' | {{
+                    id: toString(id(rel)),
+                    source: startNode(rel).id,
+                    target: endNode(rel).id,
+                    type: 'custom',
+                    data: {{
+                        relType: type(rel),
+                        sourceId: startNode(rel).id,
+                        targetId: endNode(rel).id,
+                        mrankgroup: rel.rankgroup,
+                        rankvalue: rel.rankvalue,
+                        rankorder: rel.rankorder,
+                        rating_change: rel.rating_change,
+                        level_of_influence: rel.level_of_influence,
+                        mandate_status: rel.mandate_status,
+                        consultant: rel.consultant,
+                        manager: rel.manager,
+                        commitment_market_value: rel.commitment_market_value,
+                        manager_since_date: rel.manager_since_date,
+                        multi_mandate_manager: rel.multi_mandate_manager,
+                        annualised_alpha_summary: rel.annualised_alpha_summary,
+                        batting_average_summary: rel.batting_average_summary,
+                        downside_market_capture_summary: rel.downside_market_capture_summary,
+                        information_ratio_summary: rel.information_ratio_summary,
+                        opportunity_type: rel.opportunity_type,
+                        returns: rel.returns,
+                        returns_summary: rel.returns_summary,
+                        standard_deviation_summary: rel.standard_deviation_summary,
+                        upside_market_capture_summary: rel.upside_market_capture_summary
+                    }}
+                }}]
+            }} AS GraphData
+            """
+        
+        return single_call_query, params
 
     def get_ratings_for_nodes(
         self, 
