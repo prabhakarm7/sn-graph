@@ -1,4 +1,4 @@
-// components/StatsCards.tsx - Simplified Version
+// components/StatsCards.tsx - Fixed with proper recommendations mode handling
 import React, { useState } from 'react';
 import { Box, Typography, Switch, FormControlLabel, IconButton, Tooltip, Chip } from '@mui/material';
 import { 
@@ -54,10 +54,23 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   const productsCount = nodes.filter(n => n.type === 'PRODUCT').length;
   const totalRecommendationEntities = incumbentProductsCount + biRecommendsCount;
 
-  const handleRecommendationsToggle = (checked: boolean) => {
+  const handleRecommendationsToggle = async (checked: boolean) => {
     console.log(`🎯 Recommendations mode ${checked ? 'ENABLED' : 'DISABLED'}`);
+    
+    // IMPORTANT: Update local state first
     setRecommendationsMode(checked);
-    onModeChange(checked ? 'recommendations' : 'standard');
+    
+    try {
+      // Then call the mode change handler which should:
+      // 1. Update the node types to include/exclude INCUMBENT_PRODUCT
+      // 2. Reload the data with the new mode
+      await onModeChange(checked ? 'recommendations' : 'standard');
+      console.log(`🎯 Successfully switched to ${checked ? 'recommendations' : 'standard'} mode`);
+    } catch (err) {
+      console.error(`🎯 Failed to switch to ${checked ? 'recommendations' : 'standard'} mode:`, err);
+      // Revert local state if the mode change failed
+      setRecommendationsMode(!checked);
+    }
   };
 
   return (
@@ -132,7 +145,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         py: 1,
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
       }}>
-        {/* Product Recommendations Toggle */}
+        {/* Product Recommendations Toggle - FIXED */}
         <FormControlLabel
           control={
             <Switch

@@ -1,4 +1,4 @@
-// WorkingFiltersInterface.tsx - Updated with purple chip colors for selected values
+// WorkingFiltersInterface.tsx - Fixed with sticky apply button at bottom
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -131,10 +131,42 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
     setLocalFilters(prev => ({ ...prev, [field]: value }));
   };
   
-  // Special handler for entity-based filters - converts entity objects to string arrays
+  // Special handler for entity-based filters - FIXED for proper removal handling
   const handleEntityFilterChange = (field: string, entities: Array<{id: string, name: string}>) => {
     const names = convertEntityToNames(entities);
-    setLocalFilters(prev => ({ ...prev, [field]: names }));
+    const currentFieldValue = localFilters[field as keyof FilterCriteria] as string[] || [];
+    
+    // Update local state immediately
+    const updatedLocalFilters = { ...localFilters, [field]: names };
+    setLocalFilters(updatedLocalFilters);
+    
+    // AUTO-APPLY: If removing items (not adding), auto-apply filters
+    if (names.length < currentFieldValue.length) {
+      console.log(`Auto-applying filters due to removal in ${field}. Removed:`, 
+        currentFieldValue.filter(item => !names.includes(item)));
+      
+      // Apply filters immediately with the updated local state
+      setTimeout(() => {
+        applyFilters(updatedLocalFilters);
+      }, 150); // Reduced timeout for faster response
+    }
+  };
+
+  // Add handler for simple filter changes that also supports auto-apply
+  const handleFilterChangeWithAutoApply = (field: string, value: any) => {
+    const updatedLocalFilters = { ...localFilters, [field]: value };
+    setLocalFilters(updatedLocalFilters);
+    
+    // Check if this is a removal (for array-based filters)
+    if (Array.isArray(value) && Array.isArray(localFilters[field as keyof FilterCriteria])) {
+      const currentValue = localFilters[field as keyof FilterCriteria] as any[];
+      if (value.length < currentValue.length) {
+        console.log(`Auto-applying filters due to removal in ${field}`);
+        setTimeout(() => {
+          applyFilters(updatedLocalFilters);
+        }, 150);
+      }
+    }
   };
   
   const handleApplyFilters = async () => {
@@ -230,71 +262,65 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
 
   return (
     <Box sx={{ 
-      p: 2, 
       height: '100%', 
-      overflowY: 'auto', 
       display: 'flex', 
       flexDirection: 'column',
       bgcolor: 'rgba(15, 23, 42, 0.98)'
     }}>
-      {/* Header */}
+      {/* Header - Fixed at top */}
       <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        mb: 2,
-        flexShrink: 0
+        flexShrink: 0,
+        p: 2,
+        borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
+        bgcolor: 'rgba(15, 23, 42, 0.98)'
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TrendingUp sx={{ color: '#6366f1', fontSize: '1.2rem' }} />
-          <Typography variant="h6" sx={{ 
-            color: 'white', 
-            fontWeight: 'bold',
-            fontSize: '1rem'
-          }}>
-            Backend Processed Filters
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          {hasChanges && (
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 2
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TrendingUp sx={{ color: '#6366f1', fontSize: '1.2rem' }} />
+            <Typography variant="h6" sx={{ 
+              color: 'white', 
+              fontWeight: 'bold',
+              fontSize: '1rem'
+            }}>
+              Backend Processed Filters
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
             <Chip
-              icon={<Check />}
-              label="Apply"
-              onClick={handleApplyFilters}
-              disabled={filterLoading}
+              icon={<Clear />}
+              label="Reset"
+              onClick={handleResetFilters}
               size="small"
               sx={{
-                bgcolor: 'rgba(16, 185, 129, 0.2)',
-                color: '#10b981',
-                border: '1px solid rgba(16, 185, 129, 0.3)',
-                '&:hover': { bgcolor: 'rgba(16, 185, 129, 0.3)' },
-                fontWeight: 'bold'
+                bgcolor: 'rgba(239, 68, 68, 0.2)',
+                color: '#ef4444',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.3)' }
               }}
             />
-          )}
-          <Chip
-            icon={<Clear />}
-            label="Reset"
-            onClick={handleResetFilters}
-            size="small"
-            sx={{
-              bgcolor: 'rgba(239, 68, 68, 0.2)',
-              color: '#ef4444',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.3)' }
-            }}
-          />
+          </Box>
         </Box>
+        
+        {error && (
+          <Alert severity="error" sx={{ mb: 2, bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>
+            {error}
+          </Alert>
+        )}
       </Box>
       
-      {error && (
-        <Alert severity="error" sx={{ mb: 2, bgcolor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>
-          {error}
-        </Alert>
-      )}
-      
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', pr: 1 }}>
-        <Stack spacing={2}>
+      {/* Scrollable Content Area */}
+      <Box sx={{ 
+        flexGrow: 1, 
+        overflowY: 'auto', 
+        px: 2,
+        pb: 2
+      }}>
+        <Stack spacing={2} sx={{ mt: 2 }}>
           {/* Region Filter */}
           <Card sx={{ 
             bgcolor: 'rgba(99, 102, 241, 0.1)', 
@@ -527,7 +553,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.clientAdvisors || []}
             value={localFilters.clientAdvisorIds || []}
-            onChange={(_, newValue) => handleFilterChange('clientAdvisorIds', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('clientAdvisorIds', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="Client Advisors" sx={selectStyles} />
             )}
@@ -541,7 +567,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.consultantAdvisors || []}
             value={localFilters.consultantAdvisorIds || []}
-            onChange={(_, newValue) => handleFilterChange('consultantAdvisorIds', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('consultantAdvisorIds', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="Consultant Advisors" sx={selectStyles} />
             )}
@@ -555,7 +581,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.pcas || []}
             value={localFilters.pcaIds || []}
-            onChange={(_, newValue) => handleFilterChange('pcaIds', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('pcaIds', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="PCAs (Legacy)" sx={selectStyles} />
             )}
@@ -568,7 +594,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.acas || []}
             value={localFilters.acaIds || []}
-            onChange={(_, newValue) => handleFilterChange('acaIds', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('acaIds', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="ACAs (Legacy)" sx={selectStyles} />
             )}
@@ -596,7 +622,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.sales_regions || []}
             value={localFilters.sales_regions || []}
-            onChange={(_, newValue) => handleFilterChange('sales_regions', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('sales_regions', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="Markets (Sales Regions)" sx={selectStyles} />
             )}
@@ -610,7 +636,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.channels || []}
             value={localFilters.channels || []}
-            onChange={(_, newValue) => handleFilterChange('channels', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('channels', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="Channels" sx={selectStyles} />
             )}
@@ -624,7 +650,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.assetClasses || []}
             value={localFilters.assetClasses || []}
-            onChange={(_, newValue) => handleFilterChange('assetClasses', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('assetClasses', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="Asset Classes" sx={selectStyles} />
             )}
@@ -638,7 +664,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.ratings || []}
             value={localFilters.ratings || []}
-            onChange={(_, newValue) => handleFilterChange('ratings', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('ratings', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="Ratings" sx={selectStyles} />
             )}
@@ -652,7 +678,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.influenceLevels || []}
             value={localFilters.influenceLevels || []}
-            onChange={(_, newValue) => handleFilterChange('influenceLevels', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('influenceLevels', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="Influence Levels" sx={selectStyles} />
             )}
@@ -666,7 +692,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             size="small"
             options={filterOptions.mandateStatuses || []}
             value={localFilters.mandateStatuses || []}
-            onChange={(_, newValue) => handleFilterChange('mandateStatuses', newValue)}
+            onChange={(_, newValue) => handleFilterChangeWithAutoApply('mandateStatuses', newValue)}
             renderInput={(params) => (
               <TextField {...params} label="Mandate Statuses" sx={selectStyles} />
             )}
@@ -708,58 +734,62 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             </CardContent>
           </Card>
 
-          {/* Apply/Reset buttons */}
-          <Box sx={{ 
-            pt: 2, 
-            flexShrink: 0,
-            borderTop: '1px solid rgba(255, 255, 255, 0.1)'
-          }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Box
-                onClick={handleApplyFilters}
-                sx={{
-                  flexGrow: 1,
-                  bgcolor: hasChanges ? '#6366f1' : 'rgba(99, 102, 241, 0.5)',
-                  color: 'white',
-                  py: 1.5,
-                  px: 3,
-                  borderRadius: 2,
-                  textAlign: 'center',
-                  cursor: hasChanges ? 'pointer' : 'not-allowed',
-                  fontWeight: 'bold',
-                  fontSize: '0.9rem',
-                  transition: 'all 0.2s ease',
-                  opacity: filterLoading ? 0.7 : 1,
-                  '&:hover': hasChanges ? {
-                    bgcolor: '#4f46e5',
-                    transform: 'translateY(-1px)',
-                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
-                  } : {},
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 1
-                }}
-              >
-                {filterLoading && <CircularProgress size={16} sx={{ color: 'white' }} />}
-                Apply Backend Filters
-                {hasChanges && (
-                  <Chip 
-                    label="!" 
-                    size="small" 
-                    sx={{ 
-                      bgcolor: '#6366f1', 
-                      color: 'white', 
-                      height: 16, 
-                      fontSize: '0.6rem',
-                      border: '1px solid rgba(255, 255, 255, 0.3)'
-                    }} 
-                  />
-                )}
-              </Box>
-            </Box>
-          </Box>
+          {/* Add some bottom padding for the sticky button */}
+          <Box sx={{ height: '80px' }} />
         </Stack>
+      </Box>
+
+      {/* FIXED: Sticky Apply Button at Bottom - Width matches content area */}
+      <Box sx={{ 
+        flexShrink: 0,
+        px: 2, // Match the padding of the scrollable content area
+        py: 2,
+        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+        bgcolor: 'rgba(15, 23, 42, 0.98)',
+        backdropFilter: 'blur(10px)'
+      }}>
+        <Box
+          onClick={handleApplyFilters}
+          sx={{
+            width: '100%', // Full width within the padded container
+            bgcolor: hasChanges ? '#6366f1' : 'rgba(99, 102, 241, 0.5)',
+            color: 'white',
+            py: 1.5,
+            px: 3,
+            borderRadius: 2,
+            textAlign: 'center',
+            cursor: hasChanges ? 'pointer' : 'not-allowed',
+            fontWeight: 'bold',
+            fontSize: '0.9rem',
+            transition: 'all 0.2s ease',
+            opacity: filterLoading ? 0.7 : 1,
+            '&:hover': hasChanges ? {
+              bgcolor: '#4f46e5',
+              transform: 'translateY(-1px)',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+            } : {},
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1
+          }}
+        >
+          {filterLoading && <CircularProgress size={16} sx={{ color: 'white' }} />}
+          Apply Backend Filters
+          {hasChanges && (
+            <Chip 
+              label="!" 
+              size="small" 
+              sx={{ 
+                bgcolor: '#6366f1', 
+                color: 'white', 
+                height: 16, 
+                fontSize: '0.6rem',
+                border: '1px solid rgba(255, 255, 255, 0.3)'
+              }} 
+            />
+          )}
+        </Box>
       </Box>
     </Box>
   );

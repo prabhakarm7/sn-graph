@@ -81,9 +81,11 @@ class CompleteBackendFilterService:
                 # Step 4: Check performance limits (UNCHANGED)
                 if len(nodes) > MAX_GRAPH_NODES:
                     # UPDATED: Use cached filter options for summary
-                    filter_options = self._get_cached_complete_filter_options(
+                    filter_options = self._get_filtered_options_from_actual_data(
                         session, region, recommendations_mode
                     )
+                    filter_options_type = "filtered_data"
+                    cache_used = False
                     return self._create_summary_response_with_cached_options(
                         region, len(nodes), filters, recommendations_mode, filter_options
                     )
@@ -1340,6 +1342,8 @@ class CompleteBackendFilterService:
             """
         
         return single_call_query, params
+    
+
 
     def get_ratings_for_nodes(
         self, 

@@ -1,4 +1,4 @@
-// hooks/usePerformanceOptimizedBackendData.ts - UPDATED with backend filter synchronization
+// hooks/usePerformanceOptimizedBackendData.ts - FIXED with node type synchronization
 import { useState, useEffect, useCallback } from 'react';
 import { Node, Edge } from 'reactflow';
 import SimplifiedApiService from '../services/SimplifiedApiService';
@@ -162,7 +162,7 @@ export const usePerformanceOptimizedBackendData = () => {
           // Log discrepancies
           const requestedValue = (requestedFilters as any)[frontendKey];
           if (JSON.stringify(requestedValue) !== JSON.stringify(backendValue)) {
-            console.log(`📊 Filter sync: ${frontendKey} changed from`, requestedValue, 'to', backendValue);
+            console.log(`🔁 Filter sync: ${frontendKey} changed from`, requestedValue, 'to', backendValue);
           }
         }
       }
@@ -228,7 +228,7 @@ export const usePerformanceOptimizedBackendData = () => {
         }
       });
       
-      // Update filters state - RESET to defaults for new region
+      // FIXED: Update filters state - RESET to defaults for new region WITH PROPER NODE TYPES
       const defaultFilters: FilterCriteria = {
         regions,
         nodeTypes: recommendationsMode 
@@ -254,7 +254,7 @@ export const usePerformanceOptimizedBackendData = () => {
       };
       setCurrentFilters(defaultFilters);
       
-      console.log('Performance Optimization: Filters loaded, no graph data yet');
+      console.log('Performance Optimization: Filters loaded with node types:', defaultFilters.nodeTypes);
       
     } catch (err) {
       console.error('Performance Optimization: Filter loading error:', err);
@@ -275,7 +275,7 @@ export const usePerformanceOptimizedBackendData = () => {
   
   /**
    * STEP 2: Apply filters and load graph data with performance check
-   * UPDATED: Now synchronizes with backend-applied filters
+   * UPDATED: Now synchronizes with backend-applied filters AND properly handles filter updates
    */
   const applyFilters = useCallback(async (filters: Partial<FilterCriteria>) => {
     console.log('Performance Optimization: Applying filters with performance check');
@@ -299,6 +299,9 @@ export const usePerformanceOptimizedBackendData = () => {
       
       console.log('🚀 Requesting filters:', requestedFilters);
       
+      // IMPORTANT: Update current filters immediately to ensure UI reflects changes
+      setCurrentFilters(requestedFilters);
+      
       // Use existing API method - backend processes and returns data
       const result = await apiService.getRegionData(currentRegions[0], requestedFilters, recommendationsMode);
       
@@ -313,7 +316,7 @@ export const usePerformanceOptimizedBackendData = () => {
         setFilterOptions(transformedOptions);
       }
       
-      // 🔄 SYNCHRONIZE WITH BACKEND APPLIED FILTERS
+      // 🔄 SYNCHRONIZE WITH BACKEND APPLIED FILTERS (final sync)
       const synchronizedFilters = synchronizeFiltersWithBackend(requestedFilters, result);
       setCurrentFilters(synchronizedFilters);
       
@@ -429,21 +432,32 @@ export const usePerformanceOptimizedBackendData = () => {
   }, [currentRegions, currentFilters.nodeTypes, loadRegionFiltersOnly]);
   
   /**
-   * Mode switching with performance optimization
+   * FIXED: Mode switching with proper node type handling
    */
   const switchMode = useCallback(async (mode: 'standard' | 'recommendations') => {
     console.log(`Performance Optimization: Mode switch to ${mode}`);
     
     const recommendationsMode = mode === 'recommendations';
     
+    // FIXED: Update node types properly based on mode
+    const updatedFilters: FilterCriteria = {
+      ...currentFilters,
+      nodeTypes: recommendationsMode 
+        ? ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT', 'INCUMBENT_PRODUCT']
+        : ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT']
+    };
+    
+    // Update the current filters first
+    setCurrentFilters(updatedFilters);
+    
     // If we have graph data, try to switch with current filters
     if (graphData.performance.mode === 'graph_ready' && graphData.canRender) {
-      await applyFilters({});
+      await applyFilters(updatedFilters);
     } else {
-      // Otherwise go back to filters-only mode
+      // Otherwise go back to filters-only mode with proper node types
       await loadRegionFiltersOnly(currentRegions, recommendationsMode);
     }
-  }, [currentRegions, graphData.performance.mode, graphData.canRender, loadRegionFiltersOnly, applyFilters]);
+  }, [currentRegions, currentFilters, graphData.performance.mode, graphData.canRender, loadRegionFiltersOnly, applyFilters]);
   
   /**
    * STEP 4: Reset filters - back to filters only
