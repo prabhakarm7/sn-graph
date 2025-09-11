@@ -1,8 +1,11 @@
+// READY TO RUN: Neo4j Query with NAI Region and Danielle Lynch Consultant Filter
+// Copy and paste this entire query into Neo4j Browser
+
 CALL {
     // Query 1: Consultant -> Field Consultant -> Company -> Product (Full Path)
     OPTIONAL MATCH (cons:CONSULTANT)-[emp_rel:EMPLOYS]->(fc:FIELD_CONSULTANT)-[cov_rel:COVERS]->(c:COMPANY)-[owns_rel:OWNS]->(p:PRODUCT)
-    WHERE (c.region = $region OR $region IN c.region) 
-    AND cons.name IN $consultantIds
+    WHERE (c.region = "NAI" OR "NAI" IN c.region) 
+    AND cons.name IN ["Danielle Lynch"]
     RETURN cons as consultant, fc as field_consultant, c as company, p as product,
         emp_rel as rel1, cov_rel as rel2, owns_rel as rel3, 'full_path' as path_type
     
@@ -10,8 +13,8 @@ CALL {
     
     // Query 2: Consultant -> Company -> Product (Direct Coverage)
     OPTIONAL MATCH (cons:CONSULTANT)-[cov_rel:COVERS]->(c:COMPANY)-[owns_rel:OWNS]->(p:PRODUCT)
-    WHERE (c.region = $region OR $region IN c.region) 
-    AND cons.name IN $consultantIds
+    WHERE (c.region = "NAI" OR "NAI" IN c.region) 
+    AND cons.name IN ["Danielle Lynch"]
     RETURN cons as consultant, null as field_consultant, c as company, p as product,
         cov_rel as rel1, null as rel2, owns_rel as rel3, 'direct_consultant' as path_type
     
@@ -19,10 +22,10 @@ CALL {
     
     // Query 3: Field Consultant -> Company -> Product (When FC connected to filtered consultants)
     OPTIONAL MATCH (fc:FIELD_CONSULTANT)-[cov_rel:COVERS]->(c:COMPANY)-[owns_rel:OWNS]->(p:PRODUCT)
-    WHERE (c.region = $region OR $region IN c.region) 
+    WHERE (c.region = "NAI" OR "NAI" IN c.region) 
     AND EXISTS {
         MATCH (cons:CONSULTANT)-[:EMPLOYS]->(fc)
-        WHERE cons.name IN $consultantIds
+        WHERE cons.name IN ["Danielle Lynch"]
     }
     RETURN null as consultant, fc as field_consultant, c as company, p as product,
         null as rel1, cov_rel as rel2, owns_rel as rel3, 'field_consultant_only' as path_type
@@ -31,10 +34,10 @@ CALL {
     
     // Query 4: Company -> Product (Only companies connected to filtered consultants)
     OPTIONAL MATCH (c:COMPANY)-[owns_rel:OWNS]->(p:PRODUCT)
-    WHERE (c.region = $region OR $region IN c.region) 
+    WHERE (c.region = "NAI" OR "NAI" IN c.region) 
     AND EXISTS {
         MATCH (cons:CONSULTANT)
-        WHERE cons.name IN $consultantIds
+        WHERE cons.name IN ["Danielle Lynch"]
         AND ((cons)-[:COVERS]->(c) OR (cons)-[:EMPLOYS]->(:FIELD_CONSULTANT)-[:COVERS]->(c))
     }
     RETURN null as consultant, null as field_consultant, c as company, p as product,
@@ -156,9 +159,9 @@ RETURN {
             products: size(product_nodes)
         },
         filter_effectiveness: {
-            filtered_consultants: [c.name IN consultant_nodes | c.name],
-            connected_companies: [c.name IN company_nodes | c.name],
-            available_products: [p.name IN product_nodes | p.name]
+            filtered_consultants: [c IN consultant_nodes | c.name],
+            connected_companies: [c IN company_nodes | c.name],
+            available_products: [p IN product_nodes | p.name]
         },
         performance_metrics: {
             nodes_per_consultant: CASE 
@@ -171,7 +174,7 @@ RETURN {
                 THEN round(size(filteredRels) * 1.0 / size(filteredNodes), 2)
                 ELSE 0 
             END,
-            filter_impact: "Only nodes connected to specified consultants included"
+            filter_impact: "Only nodes connected to Danielle Lynch in NAI region"
         }
     }
-} AS GraphData
+} AS GraphData;
