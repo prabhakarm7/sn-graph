@@ -39,6 +39,79 @@ class CompleteFilterRequest(BaseModel):
     influenceLevels: Optional[List[str]] = None
 
 
+def clean_filter_values(raw_filters: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Clean filter values to remove invalid entries like ['string'], empty arrays, etc.
+    This prevents frontend placeholder values from being treated as real filters.
+    """
+    cleaned = {}
+    
+    # Common invalid values that frontends might send
+    invalid_values = [
+        "string",           # Placeholder from frontend
+        "",                 # Empty string
+        None,               # Null values
+        "null",             # String null
+        "undefined",        # JavaScript undefined as string
+        "[]",               # Empty array as string
+        "{}",               # Empty object as string
+        "select",           # Default dropdown text
+        "all",              # Default "show all" option
+        "none",             # Default "none" option
+        "choose",           # Default "choose" text
+        "placeholder"       # Generic placeholder
+    ]
+    
+    for key, value in raw_filters.items():
+        if value is None:
+            continue
+            
+        if isinstance(value, list):
+            # Filter out invalid list items
+            valid_items = []
+            for item in value:
+                # Convert to string for comparison and check
+                item_str = str(item).strip().lower()
+                
+                # Skip if empty or invalid
+                if not item_str or item_str in invalid_values:
+                    continue
+                    
+                # Skip if it looks like a placeholder (contains generic words)
+                if any(placeholder in item_str for placeholder in ["select", "choose", "default", "placeholder"]):
+                    continue
+                    
+                # Add the original item (not lowercased) if it passed validation
+                valid_items.append(str(item).strip())
+            
+            # Only add to cleaned filters if we have valid items
+            if valid_items:
+                cleaned[key] = valid_items
+                print(f"✓ Valid filter {key}: {valid_items}")
+            else:
+                print(f"✗ Removed empty/invalid filter {key}: {value}")
+                
+        elif isinstance(value, str):
+            # Handle single string values
+            value_str = value.strip().lower()
+            
+            if value_str and value_str not in invalid_values:
+                # Don't include placeholder-like strings
+                if not any(placeholder in value_str for placeholder in ["select", "choose", "default", "placeholder"]):
+                    cleaned[key] = value.strip()  # Keep original case
+                    print(f"✓ Valid filter {key}: {value.strip()}")
+                else:
+                    print(f"✗ Removed placeholder filter {key}: {value}")
+            else:
+                print(f"✗ Removed invalid filter {key}: {value}")
+        else:
+            # Handle other types (numbers, booleans, etc.)
+            cleaned[key] = value
+            print(f"✓ Valid filter {key}: {value}")
+    
+    return cleaned
+
+
 @complete_backend_router.get("/region/{region}")
 async def get_complete_backend_data(
     region: str,
@@ -70,24 +143,42 @@ async def get_complete_filtered_data(
     """
     MAIN ENDPOINT: Get completely filtered and processed data.
     All complex logic handled server-side - frontend gets ready-to-render data.
+    NOW WITH PROPER FILTER VALIDATION AND CLEANING.
     """
     try:
         # Convert Pydantic model to dict, excluding None values
-        print("Asdasd",filter_request.dict())
-        filters = {k: v for k, v in filter_request.dict().items() if v is not None}
+        raw_filters = {k: v for k, v in filter_request.dict().items() if v is not None}
+        print("Raw filters received:", raw_filters)
         
-        print(f"Complete backend processing for {region} with filters: {list(filters.keys())}")
+        # CLEAN THE FILTERS - Remove invalid values like ['string']
+        cleaned_filters = clean_filter_values(raw_filters)
+        print("Cleaned filters:", cleaned_filters)
+        
+        # Only proceed if we have valid filters or no filters at all
+        has_valid_filters = len(cleaned_filters) > 0
+        
+        print(f"Complete backend processing for {region} with {len(cleaned_filters)} valid filters: {list(cleaned_filters.keys())}")
         
         result = complete_backend_filter_service.get_complete_filtered_data(
             region=region.upper(),
-            filters=filters,
+            filters=cleaned_filters,  # Use cleaned filters
             recommendations_mode=recommendations_mode
         )
+        
+        # Add filter validation info to response metadata
+        if "metadata" in result:
+            result["metadata"]["filter_validation"] = {
+                "raw_filter_count": len(raw_filters),
+                "valid_filter_count": len(cleaned_filters),
+                "filters_applied": list(cleaned_filters.keys()),
+                "filters_removed": [k for k in raw_filters.keys() if k not in cleaned_filters]
+            }
         
         return result
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Complete filtered processing failed: {str(e)}")
+
 
 
 @complete_backend_router.get("/region/{region}/filter-options")
@@ -157,19 +248,30 @@ async def apply_filter_suggestion(
 ):
     """
     Apply a specific filter suggestion and get filtered results.
+    NOW WITH FILTER VALIDATION.
     """
     try:
         # Convert suggestion to filter format
-        filters = {}
+        raw_filters = {}
         filter_field = suggestion.get('filter_field')
         filter_value = suggestion.get('filter_value')
         
         if filter_field and filter_value:
-            filters[filter_field] = [filter_value]
+            raw_filters[filter_field] = [filter_value]
+        
+        # Clean the filters
+        cleaned_filters = clean_filter_values(raw_filters)
+        
+        if not cleaned_filters:
+            return {
+                "success": False,
+                "error": "No valid filters could be extracted from suggestion",
+                "suggestion_received": suggestion
+            }
         
         result = complete_backend_filter_service.get_complete_filtered_data(
             region=region.upper(),
-            filters=filters,
+            filters=cleaned_filters,
             recommendations_mode=recommendations_mode
         )
         
@@ -177,6 +279,7 @@ async def apply_filter_suggestion(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Suggestion application failed: {str(e)}")
+
 
 
 @complete_backend_router.get("/health")
