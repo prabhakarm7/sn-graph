@@ -39,6 +39,13 @@ class CompleteFilterRequest(BaseModel):
     influenceLevels: Optional[List[str]] = None
 
 
+# Add this new request model after your existing CompleteFilterRequest class
+class NLQRequest(BaseModel):
+    """Natural Language Query request model."""
+    cypher_query: str
+    recommendations_mode: Optional[bool] = False
+
+
 def clean_filter_values(raw_filters: Dict[str, Any]) -> Dict[str, Any]:
     """
     Clean filter values to remove invalid entries like ['string'], empty arrays, etc.
@@ -132,6 +139,58 @@ async def get_complete_backend_data(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Complete backend processing failed: {str(e)}")
+
+
+# Add this new endpoint to your router
+@complete_backend_router.post("/region/{region}/nlq")
+async def get_nlq_filtered_data(
+    region: str,
+    nlq_request: NLQRequest
+):
+    """
+    NLQ ENDPOINT: Execute custom Cypher query directly.
+    API receives pre-built Cypher query with parameters already embedded.
+    All post-processing (orphan removal, layout, filter options) handled server-side.
+    """
+    try:
+        cypher_query = nlq_request.cypher_query.strip()
+        
+        if not cypher_query:
+            raise HTTPException(status_code=400, detail="Cypher query cannot be empty")
+        
+        # Basic validation - ensure query returns GraphData
+        if "GraphData" not in cypher_query:
+            raise HTTPException(
+                status_code=400, 
+                detail="Cypher query must return result as 'GraphData' - use: RETURN {...} AS GraphData"
+            )
+        
+        print(f"NLQ MODE: Executing custom Cypher query for region {region}")
+        print(f"Query length: {len(cypher_query)} characters")
+        
+        result = complete_backend_filter_service.get_complete_filtered_data(
+            region=region.upper(),
+            nlq_mode=True,
+            nlq_cypher_query=cypher_query,
+            recommendations_mode=nlq_request.recommendations_mode
+        )
+        
+        # Add NLQ-specific metadata
+        if "metadata" in result:
+            result["metadata"]["nlq_processing"] = {
+                "query_length": len(cypher_query),
+                "direct_cypher_execution": True,
+                "parameters_embedded": True,
+                "post_processing_applied": True
+            }
+        
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"NLQ processing failed: {str(e)}")
 
 
 @complete_backend_router.post("/region/{region}/filtered")

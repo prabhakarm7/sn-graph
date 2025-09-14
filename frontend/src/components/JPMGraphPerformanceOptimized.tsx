@@ -1,4 +1,4 @@
-// JPMGraphPerformanceOptimized.tsx - Main component with performance optimization
+// JPMGraphPerformanceOptimized.tsx - Updated with Smart Queries Interface
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import ReactFlow, {
@@ -14,11 +14,11 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Box, Drawer, Tabs, Tab, Typography, CircularProgress, Alert } from '@mui/material';
-import { Chat as ChatIcon, FilterList as FilterIcon } from '@mui/icons-material';
+import { Psychology, FilterList as FilterIcon } from '@mui/icons-material';
 
 // Import components
 import { nodeTypes, edgeTypes } from './components/NodeComponents';
-import { ChatInterface } from './components/ChatInterface';
+import { SmartQueriesInterface } from './components/SmartQueriesInterface';
 import { WorkingFiltersInterface } from './components/WorkingFiltersInterface';
 import { StatsCards } from './components/StatsCards';
 import { InsightsPanel } from './components/InsightsPanel';
@@ -26,6 +26,7 @@ import { DebugDataDisplay } from './components/DebugDataDisplay';
 import { PerformanceMessage } from './components/PerformanceMessage';
 import { AppNodeData, EdgeData } from './types/GraphTypes';
 import { usePerformanceOptimizedBackendData } from './hooks/usePerformanceOptimizedBackendData';
+import { SmartQuery } from './services/SmartQueriesService';
 
 import { GraphDataProvider } from './context/GraphDataProvider';
 
@@ -41,30 +42,34 @@ function PerformanceOptimizedGraphComponent() {
   const [selectedEdge, setSelectedEdge] = useState<Edge<EdgeData> | null>(null);
   const [hoveredNode, setHoveredNode] = useState<Node<AppNodeData> | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<Edge<EdgeData> | null>(null);
-  const [tabValue, setTabValue] = useState(1); // Start with filters tab
+  const [tabValue, setTabValue] = useState(0); // Start with Smart Queries tab (changed from 1 to 0)
   const [showDebug, setShowDebug] = useState(false);
   const [isDarkTheme, setIsDarkTheme] = useState(true);
+  
+  // Smart Queries state
+  const [lastQueryResult, setLastQueryResult] = useState<any>(null);
+  const [executedQuery, setExecutedQuery] = useState<SmartQuery | null>(null);
   
   // Local recommendations mode state
   const [recommendationsMode, setRecommendationsMode] = useState(false);
 
   // PERFORMANCE OPTIMIZED: Use performance-optimized backend data hook
   const { 
-    graphData,           // With performance state
+    graphData,           
     filterOptions,
     currentFilters,
     currentRegions,
     initialLoading, 
     filterLoading, 
     error,
-    changeRegions,       // Optimized: filters-only on region change
-    applyFilters,        // Optimized: performance check before rendering
-    resetFilters,        // Optimized: back to filters-only
+    changeRegions,       
+    applyFilters,        
+    resetFilters,        
     getAvailableRegions,
     hasData,
     nodeCount,
     edgeCount,
-    performanceState,    // NEW: Performance state tracking
+    performanceState,    
     switchMode,
     isRecommendationsMode,
     dataSource,
@@ -126,6 +131,36 @@ function PerformanceOptimizedGraphComponent() {
     
     return () => clearTimeout(timeoutId);
   }, [graphData, setNodes, setEdges, fitView, dataSource]);
+
+  // Handle Smart Query execution
+  // Handle Smart Query execution
+  const handleQueryExecuted = useCallback(async (result: any, query: SmartQuery) => {
+    console.log('Smart Query executed:', query.question, result);
+    
+    setLastQueryResult(result);
+    setExecutedQuery(query);
+    
+    // If the query returned graph data, we need to update our ReactFlow
+    if (result.success && result.render_mode === 'graph' && result.data.nodes) {
+      // Transform the NLQ result to ReactFlow format
+      const transformedNodes = result.data.nodes.map((node: any) => ({
+        ...node,
+        position: node.position || { x: Math.random() * 400, y: Math.random() * 400 }
+      }));
+      
+      setNodes(transformedNodes);
+      setEdges(result.data.relationships || []);
+      
+      // Fit view after a short delay
+      setTimeout(() => {
+        try {
+          fitView({ padding: 0.2, duration: 500 });
+        } catch (error) {
+          console.warn('FitView failed after smart query:', error);
+        }
+      }, 200);
+    }
+  }, [setNodes, setEdges, fitView]);
 
   // Handle suggestion application from performance message
   const handleApplySuggestion = useCallback(async (suggestion: any) => {
@@ -228,12 +263,12 @@ function PerformanceOptimizedGraphComponent() {
       }}>
         <CircularProgress sx={{ color: recommendationsMode ? '#f59e0b' : '#6366f1', mb: 2 }} size={60} />
         <Typography variant="h6" sx={{ mb: 1 }}>
-          Loading Filter Options (Performance Optimized)
+          Loading Smart Network Analytics
         </Typography>
         <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center' }}>
           Loading filters for {currentRegions.join(', ')} region
           <br />
-          Apply filters to load graph data
+          Apply filters or execute smart queries to load graph data
         </Typography>
       </Box>
     );
@@ -287,27 +322,32 @@ function PerformanceOptimizedGraphComponent() {
 
           {/* Loading Overlay */}
           {filterLoading && (
-            <Box sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              bgcolor: 'rgba(15, 23, 42, 0.7)',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              zIndex: 1000,
-              backdropFilter: 'blur(4px)'
-            }}>
-              <Box sx={{ textAlign: 'center' }}>
-                <CircularProgress sx={{ color: recommendationsMode ? '#f59e0b' : '#6366f1', mb: 2 }} />
-                <Typography sx={{ color: 'white' }}>
-                  Performance check: Processing {recommendationsMode ? 'recommendations' : 'standard'} filters...
-                </Typography>
+              <Box sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                bgcolor: 'rgba(15, 23, 42, 0.7)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                zIndex: 1000,
+                backdropFilter: 'blur(4px)'
+              }}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <CircularProgress sx={{ color: recommendationsMode ? '#f59e0b' : '#6366f1', mb: 2 }} />
+                  <Typography sx={{ color: 'white' }}>
+                    Processing {executedQuery ? 'smart query' : 'filters'}...
+                  </Typography>
+                  {executedQuery && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block', mt: 1 }}>
+                      Executing: {executedQuery.question}
+                    </Typography>
+                  )}
+                </Box>
               </Box>
-            </Box>
-          )}
+            )}
 
           {/* PERFORMANCE OPTIMIZED: Show graph OR performance message */}
           {hasData && graphData.canRender ? (
@@ -418,7 +458,7 @@ function PerformanceOptimizedGraphComponent() {
         </Box>
       </Box>
 
-      {/* Right Panel - Filters and Chat (Performance Optimized) */}
+      {/* Right Panel - Smart Queries and Filters */}
       <Drawer 
         variant="permanent" 
         anchor="right" 
@@ -436,7 +476,7 @@ function PerformanceOptimizedGraphComponent() {
         }}
       >
         <Box sx={{ width: 320, height: '100%', display: 'flex', flexDirection: 'column' }}>
-          {/* Tab header with performance indicators */}
+          {/* Tab header with Smart Queries and Filters */}
           <Box sx={{ 
             flexShrink: 0,
             borderBottom: '1px solid rgba(99, 102, 241, 0.2)',
@@ -465,8 +505,8 @@ function PerformanceOptimizedGraphComponent() {
               }}
             >
               <Tab 
-                icon={<ChatIcon />} 
-                label="Chat" 
+                icon={<Psychology />} 
+                label="Smart Queries" 
                 iconPosition="start"
                 sx={{ 
                   gap: 1,
@@ -477,7 +517,7 @@ function PerformanceOptimizedGraphComponent() {
                 icon={<FilterIcon />} 
                 label={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    Performance Filters
+                    Filters
                     {filterLoading && (
                       <CircularProgress size={12} sx={{ color: '#6366f1' }} />
                     )}
@@ -500,7 +540,7 @@ function PerformanceOptimizedGraphComponent() {
             </Tabs>
           </Box>
           
-          {/* Tab content with performance optimization */}
+          {/* Tab content */}
           <Box sx={{ 
             flexGrow: 1, 
             overflow: 'hidden',
@@ -519,12 +559,16 @@ function PerformanceOptimizedGraphComponent() {
             }}>
               {tabValue === 0 && (
                 <Box sx={{ height: '100%', overflow: 'hidden' }}>
-                  <ChatInterface />
+                  <SmartQueriesInterface 
+                    recommendationsMode={recommendationsMode}
+                    isDarkTheme={isDarkTheme}
+                    onQueryExecuted={handleQueryExecuted}
+                    onModeChange={handleRecommendationsModeChange}
+                  />
                 </Box>
               )}
               {tabValue === 1 && (
                 <Box sx={{ height: '100%', overflow: 'hidden' }}>
-                  {/* Performance-Optimized WorkingFiltersInterface */}
                   <WorkingFiltersInterface 
                     recommendationsMode={recommendationsMode} 
                     isDarkTheme={isDarkTheme}
