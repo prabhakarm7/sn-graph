@@ -1,4 +1,4 @@
-// SmartQueriesInterface.tsx - Compact design with original validation flow
+// SmartQueriesInterface.tsx - Updated with conditional error messages after execution attempts
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -49,6 +49,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
   const [executingQuery, setExecutingQuery] = useState<string | null>(null);
   const [lastExecutedQuery, setLastExecutedQuery] = useState<string | null>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
+  const [queriesWithFilterErrors, setQueriesWithFilterErrors] = useState<Set<string>>(new Set());
   
   // Validation dialog state
   const [validationDialog, setValidationDialog] = useState<{
@@ -136,8 +137,17 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
 
     // Validate filters first
     if (!validateQueryExecution(query)) {
+      // Add this query to the list of queries that have been attempted without proper filters
+      setQueriesWithFilterErrors(prev => new Set([...Array.from(prev), query.id]));
       return;
     }
+
+    // Clear any previous filter errors for this query since validation passed
+    setQueriesWithFilterErrors(prev => {
+      const newSet = new Set(Array.from(prev));
+      newSet.delete(query.id);
+      return newSet;
+    });
 
     setExecutingQuery(query.id);
     setExecutionError(null);
@@ -189,24 +199,30 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
     return 'ready';
   };
 
-  // Get applied filter count for a query
-  const getAppliedFilterCount = (query: SmartQuery) => {
+  // Get filter value display for individual chips
+  const getFilterValueDisplay = (filterKey: string, filtersToUse: any) => {
+    const value = filtersToUse[filterKey];
+    
+    if (!value) return null;
+    
+    if (Array.isArray(value)) {
+      if (value.length === 0) return null;
+      if (value.length === 1) return value[0];
+      return `${value.length} items`;
+    }
+    
+    return value;
+  };
+
+  // Check if query has missing required filters
+  const hasRequiredFilters = (query: SmartQuery) => {
     const filtersToUse = Object.keys(pendingFilters).length > 0 ? pendingFilters : currentFilters;
-    return query.filter_list.filter(filterKey => {
-      const value = filtersToUse[filterKey];
-      return value && (Array.isArray(value) ? value.length > 0 : value);
-    }).length;
+    const validation = smartQueriesService.validateQueryFilters(query, filtersToUse);
+    return validation.isValid;
   };
 
   const closeValidationDialog = () => {
     setValidationDialog({ open: false, query: null, missingFilters: [] });
-  };
-
-  const executeWithoutFilters = () => {
-    if (validationDialog.query) {
-      closeValidationDialog();
-      executeQuery(validationDialog.query);
-    }
   };
 
   if (loading) {
@@ -288,9 +304,11 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
         {executionError && (
           <Alert severity="error" sx={{ 
             py: 0.5,
+            mb: 1,
             bgcolor: 'rgba(239, 68, 68, 0.1)', 
             color: '#ef4444',
-            '& .MuiAlert-message': { fontSize: '0.7rem' }
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            '& .MuiAlert-message': { fontSize: '0.75rem' }
           }}>
             {executionError}
           </Alert>
@@ -309,7 +327,8 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
             const status = getQueryStatus(query);
             const isExecuting = status === 'executing';
             const isCompleted = status === 'completed';
-            const appliedFilterCount = getAppliedFilterCount(query);
+            const filtersToUse = Object.keys(pendingFilters).length > 0 ? pendingFilters : currentFilters;
+            const hasAllRequiredFilters = hasRequiredFilters(query);
 
             return (
               <Card 
@@ -348,6 +367,19 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                       }}>
                         {query.question}
                       </Typography>
+                      
+                      {/* Error message for missing filters - only after attempted execution */}
+                      {!hasAllRequiredFilters && queriesWithFilterErrors.has(query.id) && (
+                        <Typography variant="caption" sx={{ 
+                          color: '#ef4444',
+                          fontSize: '0.65rem',
+                          display: 'block',
+                          mt: 0.5,
+                          fontStyle: 'italic'
+                        }}>
+                          Required filters must be selected before execution
+                        </Typography>
+                      )}
                     </Box>
 
                     {/* Status + Execute Button */}
@@ -385,8 +417,8 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                     </Box>
                   </Box>
 
-                  {/* Compact Metadata Row */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1, flexWrap: 'wrap' }}>
+                  {/* Query Mode and Status */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1, mb: 1 }}>
                     <Chip
                       label={query.auto_mode}
                       size="small"
@@ -397,29 +429,6 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                         color: query.auto_mode === 'recommendations' ? '#f59e0b' : '#6366f1',
                         fontSize: '0.6rem',
                         height: 16
-                      }}
-                    />
-                    
-                    {/* Filter Status */}
-                    <Chip
-                      label={`${appliedFilterCount}/${query.filter_list.length} filters`}
-                      size="small"
-                      icon={appliedFilterCount === query.filter_list.length ? 
-                        <CheckCircle sx={{ fontSize: '0.6rem' }} /> : 
-                        <Warning sx={{ fontSize: '0.6rem' }} />
-                      }
-                      sx={{
-                        bgcolor: appliedFilterCount === query.filter_list.length 
-                          ? 'rgba(16, 185, 129, 0.2)' 
-                          : 'rgba(156, 163, 175, 0.2)',
-                        color: appliedFilterCount === query.filter_list.length 
-                          ? '#10b981' 
-                          : '#9ca3af',
-                        fontSize: '0.6rem',
-                        height: 16,
-                        '& .MuiChip-icon': {
-                          fontSize: '0.6rem'
-                        }
                       }}
                     />
 
@@ -434,6 +443,49 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                       }} />
                     )}
                   </Box>
+
+                  {/* Individual Filter Chips */}
+                  {query.filter_list && query.filter_list.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" sx={{ 
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontSize: '0.65rem',
+                        display: 'block',
+                        mb: 0.5
+                      }}>
+                        Required filters:
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {query.filter_list
+                          .filter(filterKey => filterKey !== 'region') // Skip region as it's handled separately
+                          .map((filterKey) => {
+                            const filterValue = getFilterValueDisplay(filterKey, filtersToUse);
+                            const hasValue = filterValue !== null;
+                            
+                            return (
+                              <Chip
+                                key={filterKey}
+                                label={hasValue ? `${filterKey}: ${filterValue}` : filterKey}
+                                size="small"
+                                sx={{
+                                  bgcolor: hasValue 
+                                    ? 'rgba(16, 185, 129, 0.2)' 
+                                    : 'rgba(156, 163, 175, 0.2)',
+                                  color: hasValue ? '#10b981' : '#9ca3af',
+                                  fontSize: '0.6rem',
+                                  height: 16,
+                                  maxWidth: '120px',
+                                  '& .MuiChip-label': {
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }
+                                }}
+                              />
+                            );
+                          })}
+                      </Box>
+                    </Box>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -455,6 +507,60 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
           )}
         </Stack>
       </Box>
+
+      {/* Validation Dialog */}
+      <Dialog
+        open={validationDialog.open}
+        onClose={closeValidationDialog}
+        maxWidth="sm"
+        fullWidth
+        sx={{
+          '& .MuiDialog-paper': {
+            bgcolor: 'rgba(15, 23, 42, 0.95)',
+            color: 'white',
+            border: '1px solid rgba(99, 102, 241, 0.3)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Warning sx={{ color: '#f59e0b' }} />
+          Missing Required Filters
+          <IconButton
+            onClick={closeValidationDialog}
+            sx={{ ml: 'auto', color: 'rgba(255, 255, 255, 0.7)' }}
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255, 255, 255, 0.8)' }}>
+            The following filters are required for this query but haven't been selected:
+          </Typography>
+          <List dense>
+            {validationDialog.missingFilters.map((filter) => (
+              <ListItem key={filter} sx={{ py: 0.5 }}>
+                <ListItemText 
+                  primary={filter}
+                  sx={{ 
+                    '& .MuiListItemText-primary': { 
+                      color: '#f59e0b',
+                      fontSize: '0.9rem'
+                    }
+                  }}
+                />
+              </ListItem>
+            ))}
+          </List>
+          <Typography variant="body2" sx={{ mt: 2, color: 'rgba(255, 255, 255, 0.8)' }}>
+            Please apply the required filters in the Filters tab before executing this query.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeValidationDialog} sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

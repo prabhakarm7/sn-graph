@@ -7,6 +7,7 @@ from app.api.graph import graph_router
 from app.api.filters import filters_router
 from app.api.hierarchical_filter import hierarchical_router
 from app.api.smart_query_router import smart_queries_router
+from app.api.nlq_router import nlq_router
 
 # Create main API router
 api_router = APIRouter()
@@ -29,4 +30,9 @@ api_router.include_router(
 api_router.include_router(
     smart_queries_router,
     tags=["Smart Queries Router"]
+)
+
+api_router.include_router(
+    nlq_router,
+    tags=["NLQ Router"]
 )

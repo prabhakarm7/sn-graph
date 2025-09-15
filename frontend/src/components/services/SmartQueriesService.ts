@@ -1,4 +1,4 @@
-// services/SmartQueriesService.ts - Complete and Corrected
+// services/SmartQueriesService.ts - Updated to send complete object to API
 export interface SmartQuery {
   id: string;
   question: string;
@@ -81,83 +81,7 @@ export class SmartQueriesService {
     return queries.find(q => q.id === queryId) || null;
   }
 
-  // Build actual Cypher query from template with filters
-  buildCypherQuery(query: SmartQuery, region: string, filters: Record<string, any> = {}): string {
-    let cypherQuery = query.template_cypher_query;
-    
-    // Replace region placeholder
-    cypherQuery = cypherQuery.replace(/\{region\}/g, region.toUpperCase());
-    
-    // Apply filters based on filter_list
-    query.filter_list.forEach(filterKey => {
-      if (filters[filterKey] && filters[filterKey].length > 0) {
-        // Handle different filter types
-        switch (filterKey) {
-          case 'consultantIds':
-            if (cypherQuery.includes('cons.name')) {
-              cypherQuery = cypherQuery.replace(
-                /WHERE ([^}]+)/,
-                `WHERE $1 AND cons.name IN [${filters[filterKey].map((id: string) => `'${id}'`).join(', ')}]`
-              );
-            }
-            break;
-          
-          case 'mandateStatuses':
-            if (cypherQuery.includes('mandate_status')) {
-              cypherQuery = cypherQuery.replace(
-                /mandate_status = '[^']+'/,
-                `mandate_status IN [${filters[filterKey].map((status: string) => `'${status}'`).join(', ')}]`
-              );
-            }
-            break;
-          
-          case 'influenceLevels':
-            if (cypherQuery.includes('level_of_influence')) {
-              cypherQuery = cypherQuery.replace(
-                /level_of_influence IN \[[^\]]+\]/,
-                `level_of_influence IN [${filters[filterKey].map((level: string) => `'${level}'`).join(', ')}]`
-              );
-            }
-            break;
-          
-          case 'ratings':
-            if (cypherQuery.includes('rankgroup')) {
-              cypherQuery = cypherQuery.replace(
-                /rankgroup = '[^']+'/,
-                `rankgroup IN [${filters[filterKey].map((rating: string) => `'${rating}'`).join(', ')}]`
-              );
-              cypherQuery = cypherQuery.replace(
-                /\{rating\}/g,
-                filters[filterKey][0] // Use first rating as placeholder replacement
-              );
-            }
-            break;
-          
-          case 'assetClasses':
-            if (cypherQuery.includes('asset_class')) {
-              // This would need more sophisticated template replacement logic
-              console.log('Asset class filtering needs template enhancement');
-            }
-            break;
-          
-          case 'clientIds':
-            if (cypherQuery.includes('c.name')) {
-              const whereRegex = /(WHERE[^}]+)/;
-              const match = cypherQuery.match(whereRegex);
-              if (match) {
-                const newWhere = match[1] + ` AND c.name IN [${filters[filterKey].map((id: string) => `'${id}'`).join(', ')}]`;
-                cypherQuery = cypherQuery.replace(whereRegex, newWhere);
-              }
-            }
-            break;
-        }
-      }
-    });
-    
-    return cypherQuery;
-  }
-
-  // Enhanced execute method with template processing
+  // Enhanced execute method - send complete query object with applied filters to NLQ API
   async executeSmartQuery(
     queryId: string,
     region: string,
@@ -168,7 +92,7 @@ export class SmartQueriesService {
     result: any;
     detectedMode: 'standard' | 'recommendations';
     modeChanged: boolean;
-    actualCypherQuery: string;
+    queryObject: SmartQuery;
   }> {
     const query = await this.getSmartQueryById(queryId);
     if (!query) {
@@ -183,10 +107,24 @@ export class SmartQueriesService {
       console.log(`Auto-switching mode: ${currentMode} → ${detectedMode} for query "${query.question}"`);
     }
 
-    // Build actual Cypher query from template
-    const actualCypherQuery = this.buildCypherQuery(query, region, appliedFilters);
-    
-    console.log('Built Cypher Query:', actualCypherQuery);
+    // Create smart query object with applied filters embedded
+    const smartQueryWithFilters = {
+      id: query.id,
+      question: query.question,
+      template_cypher_query: query.template_cypher_query,
+      example_filters: query.example_filters,
+      expected_cypher_query: query.expected_cypher_query,
+      auto_mode: query.auto_mode,
+      mode_keywords: query.mode_keywords,
+      applied_filters: appliedFilters // Add applied filters directly to smart_query
+    };
+
+    console.log('Executing Smart Query with filters embedded:', {
+      queryId,
+      region,
+      appliedFilters,
+      detectedMode
+    });
 
     try {
       const response = await fetch(
@@ -195,8 +133,10 @@ export class SmartQueriesService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            cypher_query: actualCypherQuery,
-            recommendations_mode: detectedMode === 'recommendations'
+            smart_query: smartQueryWithFilters,
+            region: region,
+            recommendations_mode: detectedMode === 'recommendations',
+            user_intent: userIntent
           })
         }
       );
@@ -211,8 +151,6 @@ export class SmartQueriesService {
       if (result.metadata) {
         result.metadata.smart_query_id = queryId;
         result.metadata.smart_query_question = query.question;
-        result.metadata.template_used = query.template_cypher_query;
-        result.metadata.actual_cypher_query = actualCypherQuery;
         result.metadata.detected_mode = detectedMode;
         result.metadata.mode_changed = modeChanged;
         result.metadata.filters_applied = appliedFilters;
@@ -223,7 +161,7 @@ export class SmartQueriesService {
         result,
         detectedMode,
         modeChanged,
-        actualCypherQuery
+        queryObject: query
       };
 
     } catch (error) {
