@@ -314,64 +314,86 @@ export class SmartQueriesService {
     return 'standard';
   }
 
-  // Validate filters against query requirements - FIXED: Use dictionary filter_list
+  // Add this mapping function to convert dot-notation back to frontend keys
+  private mapDotNotationToFrontendKey = (dotNotationKey: string): string => {
+    const reverseKeyMap: Record<string, string> = {
+      'company.name': 'clientIds',
+      'consultant.name': 'consultantIds',
+      'field_consultant.name': 'fieldConsultantIds',
+      'product.name': 'productIds',
+      'incumbent_product.name': 'incumbentProductIds',
+      'company.pca': 'clientAdvisorIds',
+      'consultant.consultant_advisor': 'consultantAdvisorIds',
+      'company.sales_region': 'sales_regions',
+      'company.channel': 'channels',
+      'product.asset_class': 'assetClasses',
+      'relationship.mandate_status': 'mandateStatuses',
+      'relationship.level_of_influence': 'influenceLevels',
+      'rating.rankgroup': 'ratings',
+      'region': 'regions'
+    };
+  
+    return reverseKeyMap[dotNotationKey] || dotNotationKey;
+  };
+
+  // Updated validateQueryFilters method
   validateQueryFilters(query: SmartQuery, currentFilters: Record<string, any>): {
     isValid: boolean;
     missingFilters: string[];
     availableFilters: string[];
   } {
-    // FIXED: Handle both dictionary and array filter_list formats
-    let requiredFilters: string[] = [];
+    // Handle both dictionary and array filter_list formats
+    let requiredFilterKeys: string[] = [];
     
     if (query.filter_list) {
       if (Array.isArray(query.filter_list)) {
         // Old format: array of strings
-        requiredFilters = query.filter_list.filter(key => key !== 'region' && key !== 'nodeTypes');
+        requiredFilterKeys = query.filter_list.filter(key => key !== 'region' && key !== 'nodeTypes');
       } else if (typeof query.filter_list === 'object') {
-        // New format: dictionary/object
-        requiredFilters = Object.keys(query.filter_list).filter(key => key !== 'region' && key !== 'nodeTypes');
+        // New format: dictionary/object with dot-notation keys
+        requiredFilterKeys = Object.keys(query.filter_list).filter(key => key !== 'region' && key !== 'nodeTypes');
       }
     }
     
     // If no filter_list or empty, fallback to example_filters keys
-    if (requiredFilters.length === 0) {
-      requiredFilters = Object.keys(query.example_filters).filter(key => key !== 'region' && key !== 'nodeTypes');
+    if (requiredFilterKeys.length === 0) {
+      requiredFilterKeys = Object.keys(query.example_filters).filter(key => key !== 'region' && key !== 'nodeTypes');
     }
     
     const filtersWithValues: string[] = [];
     const missingFilters: string[] = [];
 
-    console.log('Validation with dictionary filter_list:', {
+    console.log('Validation with dot-notation handling:', {
       queryId: query.id,
-      requiredFilters,
+      requiredFilterKeys,
       filterListType: Array.isArray(query.filter_list) ? 'array' : typeof query.filter_list,
-      currentFiltersKeys: Object.keys(currentFilters),
-      currentFiltersWithValues: Object.keys(currentFilters).filter(k => {
-        const val = currentFilters[k];
-        return val && (Array.isArray(val) ? val.length > 0 : true);
-      })
+      currentFiltersKeys: Object.keys(currentFilters)
     });
 
-    requiredFilters.forEach(filterKey => {
-      const filterValue = currentFilters[filterKey];
+    requiredFilterKeys.forEach(dotNotationKey => {
+      // Convert dot-notation key to frontend key for validation
+      const frontendKey = this.mapDotNotationToFrontendKey(dotNotationKey);
+      const filterValue = currentFilters[frontendKey];
+      
       const hasValue = filterValue && (
         (Array.isArray(filterValue) && filterValue.length > 0) ||
         (!Array.isArray(filterValue) && filterValue !== null && filterValue !== undefined && filterValue !== '')
       );
       
       if (hasValue) {
-        filtersWithValues.push(filterKey);
+        filtersWithValues.push(dotNotationKey); // Keep dot-notation for UI display
       } else {
-        missingFilters.push(filterKey);
+        missingFilters.push(dotNotationKey); // Keep dot-notation for UI display
       }
     });
 
     // Query is valid if ANY required filter has a value (not ALL)
     const isValid = filtersWithValues.length > 0;
 
-    console.log('SmartQuery validation result:', {
+    console.log('SmartQuery validation result with dot-notation:', {
       queryId: query.id,
-      requiredFilters,
+      requiredFilterKeys,
+      frontendKeys: requiredFilterKeys.map(k => this.mapDotNotationToFrontendKey(k)),
       filtersWithValues,
       missingFilters,
       isValid,
@@ -381,7 +403,7 @@ export class SmartQueriesService {
     return {
       isValid,
       missingFilters,
-      availableFilters: requiredFilters
+      availableFilters: requiredFilterKeys
     };
   }
 

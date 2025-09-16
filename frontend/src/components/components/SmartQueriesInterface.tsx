@@ -34,20 +34,20 @@ interface SmartQueriesInterfaceProps {
 // NEW: Display name mapping for user-friendly filter names
 const getFilterDisplayName = (filterKey: string): string => {
   const displayNames: Record<string, string> = {
-    'clientIds': 'Company Name',
-    'consultantIds': 'Consultant Name',
-    'fieldConsultantIds': 'Field Consultant Name',
-    'productIds': 'Product Name',
-    'incumbentProductIds': 'Incumbent Product Name',
-    'clientAdvisorIds': 'Company PCA',
-    'consultantAdvisorIds': 'Consultant Advisor',
-    'sales_regions': 'Sales Region',
-    'channels': 'Channel',
-    'assetClasses': 'Asset Class',
-    'mandateStatuses': 'Mandate Status',
-    'influenceLevels': 'Influence Level',
-    'ratings': 'Rating',
-    'regions': 'Region'
+    'company.name': 'Company Name',
+    'consultant.name': 'Consultant Name',
+    'field_consultant.name': 'Field Consultant Name',
+    'product.name': 'Product Name',
+    'incumbent_product.name': 'Incumbent Product Name',
+    'company.pca': 'Company PCA',
+    'consultant.consultant_advisor': 'Consultant Advisor',
+    'company.sales_region': 'Sales Region',
+    'company.channel': 'Channel',
+    'product.asset_class': 'Asset Class',
+    'relationship.mandate_status': 'Mandate Status',
+    'relationship.level_of_influence': 'Influence Level',
+    'rating.rankgroup': 'Rating',
+    'region': 'Region'
   };
   
   return displayNames[filterKey] || filterKey;
@@ -244,9 +244,38 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
     return 'ready';
   };
 
-  // Get filter value display for individual chips
+  
+  // Updated getFilterValueDisplay function in SmartQueriesInterface.tsx
+
   const getFilterValueDisplay = (filterKey: string, filtersToUse: any) => {
-    const value = filtersToUse[filterKey];
+    // Map dot-notation key back to frontend key to get the actual filter value
+    const frontendKeyMap: Record<string, string> = {
+      'company.name': 'clientIds',
+      'consultant.name': 'consultantIds',
+      'field_consultant.name': 'fieldConsultantIds',
+      'product.name': 'productIds',
+      'incumbent_product.name': 'incumbentProductIds',
+      'company.pca': 'clientAdvisorIds',
+      'consultant.consultant_advisor': 'consultantAdvisorIds',
+      'company.sales_region': 'sales_regions',
+      'company.channel': 'channels',
+      'product.asset_class': 'assetClasses',
+      'relationship.mandate_status': 'mandateStatuses',
+      'relationship.level_of_influence': 'influenceLevels',
+      'rating.rankgroup': 'ratings',
+      'region': 'regions'
+    };
+    
+    // Get the frontend key to look up the value
+    const frontendKey = frontendKeyMap[filterKey] || filterKey;
+    const value = filtersToUse[frontendKey];
+    
+    console.log('Filter value lookup:', {
+      dotNotationKey: filterKey,
+      frontendKey: frontendKey,
+      value: value,
+      hasValue: value && (Array.isArray(value) ? value.length > 0 : true)
+    });
     
     if (!value) return null;
     
@@ -259,7 +288,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
     return value;
   };
 
-  // Check if query has missing required filters
+  // Also update the hasRequiredFilters function to use the same mapping
   const hasRequiredFilters = (query: SmartQuery) => {
     const filtersToUse = Object.keys(pendingFilters).length > 0 ? pendingFilters : currentFilters;
     const validation = smartQueriesService.validateQueryFilters(query, filtersToUse);
@@ -311,7 +340,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
             Smart Queries
           </Typography>
           <Chip
-            label={recommendationsMode ? 'AI' : 'Standard'}
+            label={recommendationsMode ? 'Recommendation' : 'Standard'}
             size="small"
             sx={{
               bgcolor: recommendationsMode ? 'rgba(245, 158, 11, 0.2)' : 'rgba(99, 102, 241, 0.2)',
@@ -528,10 +557,10 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                                   color: hasValue ? '#10b981' : '#9ca3af',
                                   fontSize: '0.6rem',
                                   height: 16,
-                                  maxWidth: '120px',
+                                  // maxWidth: '120px',
                                   '& .MuiChip-label': {
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
+                                    // overflow: 'hidden',
+                                    // textOverflow: 'ellipsis'
                                   }
                                 }}
                               />
