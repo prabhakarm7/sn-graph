@@ -134,7 +134,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
     }
   });
 
-  // Validate query filters - FIXED: Only show dialog if NO filters are selected
+  // Validate query filters - FIXED: Show all available filters for "any filter" selection
   const validateQueryExecution = (query: SmartQuery) => {
     const filtersToUse = Object.keys(pendingFilters).length > 0 ? pendingFilters : currentFilters;
     const validation = smartQueriesService.validateQueryFilters(query, filtersToUse);
@@ -147,14 +147,26 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
     });
     
     if (!validation.isValid) {
-      // Show ALL available filters in dialog, not just missing ones
-      const allRequiredFilters = query.filter_list?.filter(f => f !== 'region') || 
-                                Object.keys(query.example_filters).filter(f => f !== 'region');
+      // Get all available filters from filter_list (handle both dictionary and array format)
+      let availableFilters: string[] = [];
+      
+      if (query.filter_list) {
+        if (Array.isArray(query.filter_list)) {
+          availableFilters = query.filter_list.filter(f => f !== 'region');
+        } else if (typeof query.filter_list === 'object') {
+          availableFilters = Object.keys(query.filter_list).filter(f => f !== 'region');
+        }
+      }
+      
+      // Fallback to example_filters if no filter_list
+      if (availableFilters.length === 0) {
+        availableFilters = Object.keys(query.example_filters).filter(f => f !== 'region');
+      }
       
       setValidationDialog({
         open: true,
         query,
-        missingFilters: allRequiredFilters // Show all options, not just missing
+        missingFilters: availableFilters // Show all options, not just missing
       });
       return false;
     }
@@ -478,7 +490,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                   </Box>
 
                   {/* Individual Filter Chips with USER-FRIENDLY DISPLAY NAMES */}
-                  {query.filter_list && query.filter_list.length > 0 && (
+                  {query.filter_list && (
                     <Box sx={{ mt: 1 }}>
                       <Typography variant="caption" sx={{ 
                         color: 'rgba(255, 255, 255, 0.7)',
@@ -489,9 +501,17 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                         Required filters:
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {query.filter_list
-                          .filter(filterKey => filterKey !== 'region') // Skip region as it's handled separately
-                          .map((filterKey) => {
+                        {(() => {
+                          // Handle both array and dictionary formats
+                          let filterKeys: string[] = [];
+                          
+                          if (Array.isArray(query.filter_list)) {
+                            filterKeys = query.filter_list.filter((filterKey: string) => filterKey !== 'region');
+                          } else if (typeof query.filter_list === 'object') {
+                            filterKeys = Object.keys(query.filter_list).filter(filterKey => filterKey !== 'region');
+                          }
+                          
+                          return filterKeys.map((filterKey: string) => {
                             const filterValue = getFilterValueDisplay(filterKey, filtersToUse);
                             const hasValue = filterValue !== null;
                             const displayName = getFilterDisplayName(filterKey); // USE HYBRID APPROACH
@@ -516,7 +536,8 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                                 }}
                               />
                             );
-                          })}
+                          });
+                        })()}
                       </Box>
                     </Box>
                   )}

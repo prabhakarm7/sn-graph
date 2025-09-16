@@ -5,7 +5,7 @@ export interface SmartQuery {
   template_cypher_query: string;
   example_filters: Record<string, any>;
   expected_cypher_query: string;
-  filter_list: string[];
+  filter_list: Record<string, any> | string[]; // Support both dictionary and array formats
   auto_mode: 'standard' | 'recommendations' | 'auto';
   mode_keywords: string[];
 }
@@ -314,28 +314,45 @@ export class SmartQueriesService {
     return 'standard';
   }
 
-  // Validate filters against query requirements - UPDATED: ANY filter is enough, not ALL
+  // Validate filters against query requirements - FIXED: Use dictionary filter_list
   validateQueryFilters(query: SmartQuery, currentFilters: Record<string, any>): {
     isValid: boolean;
     missingFilters: string[];
     availableFilters: string[];
   } {
-    // Get required filters from both example_filters AND filter_list (excluding region and nodeTypes)
-    const requiredFiltersFromExample = Object.keys(query.example_filters).filter(key => key !== 'region');
-    const requiredFiltersFromList = (query.filter_list || []).filter(key => key !== 'region');
+    // FIXED: Handle both dictionary and array filter_list formats
+    let requiredFilters: string[] = [];
     
-    // Use filter_list if available, otherwise use example_filters
-    const requiredFilters = requiredFiltersFromList.length > 0 ? requiredFiltersFromList : requiredFiltersFromExample;
+    if (query.filter_list) {
+      if (Array.isArray(query.filter_list)) {
+        // Old format: array of strings
+        requiredFilters = query.filter_list.filter(key => key !== 'region' && key !== 'nodeTypes');
+      } else if (typeof query.filter_list === 'object') {
+        // New format: dictionary/object
+        requiredFilters = Object.keys(query.filter_list).filter(key => key !== 'region' && key !== 'nodeTypes');
+      }
+    }
+    
+    // If no filter_list or empty, fallback to example_filters keys
+    if (requiredFilters.length === 0) {
+      requiredFilters = Object.keys(query.example_filters).filter(key => key !== 'region' && key !== 'nodeTypes');
+    }
     
     const filtersWithValues: string[] = [];
     const missingFilters: string[] = [];
 
+    console.log('Validation with dictionary filter_list:', {
+      queryId: query.id,
+      requiredFilters,
+      filterListType: Array.isArray(query.filter_list) ? 'array' : typeof query.filter_list,
+      currentFiltersKeys: Object.keys(currentFilters),
+      currentFiltersWithValues: Object.keys(currentFilters).filter(k => {
+        const val = currentFilters[k];
+        return val && (Array.isArray(val) ? val.length > 0 : true);
+      })
+    });
+
     requiredFilters.forEach(filterKey => {
-      // Skip nodeTypes as it's UI-only
-      if (filterKey === 'nodeTypes') {
-        return;
-      }
-      
       const filterValue = currentFilters[filterKey];
       const hasValue = filterValue && (
         (Array.isArray(filterValue) && filterValue.length > 0) ||
@@ -352,23 +369,19 @@ export class SmartQueriesService {
     // Query is valid if ANY required filter has a value (not ALL)
     const isValid = filtersWithValues.length > 0;
 
-    console.log('SmartQuery validation FIXED:', {
+    console.log('SmartQuery validation result:', {
       queryId: query.id,
       requiredFilters,
       filtersWithValues,
       missingFilters,
       isValid,
-      validationRule: 'ANY_FILTER_SUFFICIENT',
-      currentFilters: Object.keys(currentFilters).reduce((acc, key) => {
-        acc[key] = Array.isArray(currentFilters[key]) ? currentFilters[key].length : currentFilters[key];
-        return acc;
-      }, {} as Record<string, any>)
+      validationRule: 'ANY_FILTER_SUFFICIENT'
     });
 
     return {
       isValid,
       missingFilters,
-      availableFilters: query.filter_list || requiredFilters
+      availableFilters: requiredFilters
     };
   }
 
