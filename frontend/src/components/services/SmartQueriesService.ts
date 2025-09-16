@@ -1,4 +1,4 @@
-// services/SmartQueriesService.ts - Updated to send complete object to API
+// services/SmartQueriesService.ts - Updated to filter empty values and rename keys for NLQ
 export interface SmartQuery {
   id: string;
   question: string;
@@ -81,7 +81,82 @@ export class SmartQueriesService {
     return queries.find(q => q.id === queryId) || null;
   }
 
-  // Enhanced execute method - send complete query object with applied filters to NLQ API
+  // NEW: Filter out empty values from applied filters
+  private filterNonEmptyValues(appliedFilters: Record<string, any>): Record<string, any> {
+    const filtered: Record<string, any> = {};
+    
+    for (const [key, value] of Object.entries(appliedFilters)) {
+      // Skip nodeTypes - this is UI-only and should not be sent to API
+      if (key === 'nodeTypes') {
+        continue;
+      }
+      
+      // Skip if value is null, undefined, or empty string
+      if (value === null || value === undefined || value === '') {
+        continue;
+      }
+      
+      // Skip if value is an empty array
+      if (Array.isArray(value) && value.length === 0) {
+        continue;
+      }
+      
+      // Skip if value is an empty object
+      if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+        continue;
+      }
+      
+      // Include the filter if it has a meaningful value
+      filtered[key] = value;
+    }
+    
+    console.log('SmartQueriesService: Filtered applied filters:', {
+      original: Object.keys(appliedFilters).length,
+      filtered: Object.keys(filtered).length,
+      removed: Object.keys(appliedFilters).filter(k => !(k in filtered)),
+      kept: Object.keys(filtered),
+      nodeTypesRemoved: 'nodeTypes' in appliedFilters
+    });
+    
+    return filtered;
+  }
+
+  // NEW: Rename filter keys for NLQ payload only
+  private renameFiltersForNLQ(filters: Record<string, any>): Record<string, any> {
+    const keyMapping: Record<string, string> = {
+      'clientIds': 'company.name',
+      'consultantIds': 'consultant.name',
+      'fieldConsultantIds': 'field_consultant.name',
+      'productIds': 'product.name',
+      'incumbentProductIds': 'incumbent_product.name',
+      'clientAdvisorIds': 'company.pca',
+      'consultantAdvisorIds': 'consultant.consultant_advisor',
+      'sales_regions': 'company.sales_region',
+      'channels': 'company.channel',
+      'assetClasses': 'product.asset_class',
+      'mandateStatuses': 'relationship.mandate_status',
+      'influenceLevels': 'relationship.level_of_influence',
+      'ratings': 'rating.rankgroup',
+      'regions': 'region'
+    };
+
+    const renamedFilters: Record<string, any> = {};
+    
+    for (const [originalKey, value] of Object.entries(filters)) {
+      const renamedKey = keyMapping[originalKey] || originalKey;
+      renamedFilters[renamedKey] = value;
+    }
+    
+    console.log('SmartQueriesService: Renamed filters for NLQ:', {
+      original: Object.keys(filters),
+      renamed: Object.keys(renamedFilters),
+      mapping: keyMapping
+    });
+    
+    return renamedFilters;
+  }
+
+  // Enhanced execute method - with empty value filtering and key renaming
   async executeSmartQuery(
     queryId: string,
     region: string,
@@ -107,7 +182,13 @@ export class SmartQueriesService {
       console.log(`Auto-switching mode: ${currentMode} → ${detectedMode} for query "${query.question}"`);
     }
 
-    // Create smart query object with applied filters embedded
+    // STEP 1: Filter out empty values from applied filters
+    const nonEmptyFilters = this.filterNonEmptyValues(appliedFilters);
+    
+    // STEP 2: Rename filter keys for NLQ payload (only affects API payload, not global state)
+    const renamedFiltersForNLQ = this.renameFiltersForNLQ(nonEmptyFilters);
+
+    // Create smart query object with renamed and filtered applied filters
     const smartQueryWithFilters = {
       id: query.id,
       question: query.question,
@@ -116,14 +197,17 @@ export class SmartQueriesService {
       expected_cypher_query: query.expected_cypher_query,
       auto_mode: query.auto_mode,
       mode_keywords: query.mode_keywords,
-      applied_filters: appliedFilters // Add applied filters directly to smart_query
+      applied_filters: renamedFiltersForNLQ // Use renamed and filtered version
     };
 
-    console.log('Executing Smart Query with filters embedded:', {
+    console.log('Executing Smart Query with filtered and renamed filters:', {
       queryId,
       region,
-      appliedFilters,
-      detectedMode
+      originalFiltersCount: Object.keys(appliedFilters).length,
+      filteredFiltersCount: Object.keys(nonEmptyFilters).length,
+      renamedFiltersCount: Object.keys(renamedFiltersForNLQ).length,
+      detectedMode,
+      finalAppliedFilters: renamedFiltersForNLQ
     });
 
     try {
@@ -153,8 +237,16 @@ export class SmartQueriesService {
         result.metadata.smart_query_question = query.question;
         result.metadata.detected_mode = detectedMode;
         result.metadata.mode_changed = modeChanged;
-        result.metadata.filters_applied = appliedFilters;
+        result.metadata.original_filters_count = Object.keys(appliedFilters).length;
+        result.metadata.filtered_filters_count = Object.keys(nonEmptyFilters).length;
+        result.metadata.filters_sent_to_nlq = renamedFiltersForNLQ;
         result.metadata.available_filters = query.filter_list;
+        result.metadata.filter_processing = {
+          empty_values_removed: Object.keys(appliedFilters).length - Object.keys(nonEmptyFilters).length,
+          keys_renamed_for_nlq: true,
+          original_keys: Object.keys(nonEmptyFilters),
+          renamed_keys: Object.keys(renamedFiltersForNLQ)
+        };
       }
 
       return {
@@ -222,28 +314,61 @@ export class SmartQueriesService {
     return 'standard';
   }
 
-  // Validate filters against query requirements
+  // Validate filters against query requirements - UPDATED: ANY filter is enough, not ALL
   validateQueryFilters(query: SmartQuery, currentFilters: Record<string, any>): {
     isValid: boolean;
     missingFilters: string[];
     availableFilters: string[];
   } {
+    // Get required filters from both example_filters AND filter_list (excluding region and nodeTypes)
+    const requiredFiltersFromExample = Object.keys(query.example_filters).filter(key => key !== 'region');
+    const requiredFiltersFromList = (query.filter_list || []).filter(key => key !== 'region');
+    
+    // Use filter_list if available, otherwise use example_filters
+    const requiredFilters = requiredFiltersFromList.length > 0 ? requiredFiltersFromList : requiredFiltersFromExample;
+    
+    const filtersWithValues: string[] = [];
     const missingFilters: string[] = [];
 
-    // Check for required filters in example_filters
-    Object.keys(query.example_filters).forEach(filterKey => {
-      if (filterKey !== 'region') { // Region handled separately
-        const filterValue = currentFilters[filterKey];
-        if (!filterValue || (Array.isArray(filterValue) && filterValue.length === 0)) {
-          missingFilters.push(filterKey);
-        }
+    requiredFilters.forEach(filterKey => {
+      // Skip nodeTypes as it's UI-only
+      if (filterKey === 'nodeTypes') {
+        return;
+      }
+      
+      const filterValue = currentFilters[filterKey];
+      const hasValue = filterValue && (
+        (Array.isArray(filterValue) && filterValue.length > 0) ||
+        (!Array.isArray(filterValue) && filterValue !== null && filterValue !== undefined && filterValue !== '')
+      );
+      
+      if (hasValue) {
+        filtersWithValues.push(filterKey);
+      } else {
+        missingFilters.push(filterKey);
       }
     });
 
-    return {
-      isValid: missingFilters.length === 0,
+    // Query is valid if ANY required filter has a value (not ALL)
+    const isValid = filtersWithValues.length > 0;
+
+    console.log('SmartQuery validation FIXED:', {
+      queryId: query.id,
+      requiredFilters,
+      filtersWithValues,
       missingFilters,
-      availableFilters: query.filter_list
+      isValid,
+      validationRule: 'ANY_FILTER_SUFFICIENT',
+      currentFilters: Object.keys(currentFilters).reduce((acc, key) => {
+        acc[key] = Array.isArray(currentFilters[key]) ? currentFilters[key].length : currentFilters[key];
+        return acc;
+      }, {} as Record<string, any>)
+    });
+
+    return {
+      isValid,
+      missingFilters,
+      availableFilters: query.filter_list || requiredFilters
     };
   }
 

@@ -1,4 +1,4 @@
-// SmartQueriesInterface.tsx - Updated with conditional error messages after execution attempts
+// SmartQueriesInterface.tsx - Updated with hybrid approach for user-friendly filter display names
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -30,6 +30,28 @@ interface SmartQueriesInterfaceProps {
   onQueryExecuted?: (result: any, query: SmartQuery) => void;
   onModeChange?: (mode: 'standard' | 'recommendations') => void;
 }
+
+// NEW: Display name mapping for user-friendly filter names
+const getFilterDisplayName = (filterKey: string): string => {
+  const displayNames: Record<string, string> = {
+    'clientIds': 'Company Name',
+    'consultantIds': 'Consultant Name',
+    'fieldConsultantIds': 'Field Consultant Name',
+    'productIds': 'Product Name',
+    'incumbentProductIds': 'Incumbent Product Name',
+    'clientAdvisorIds': 'Company PCA',
+    'consultantAdvisorIds': 'Consultant Advisor',
+    'sales_regions': 'Sales Region',
+    'channels': 'Channel',
+    'assetClasses': 'Asset Class',
+    'mandateStatuses': 'Mandate Status',
+    'influenceLevels': 'Influence Level',
+    'ratings': 'Rating',
+    'regions': 'Region'
+  };
+  
+  return displayNames[filterKey] || filterKey;
+};
 
 export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
   recommendationsMode = false,
@@ -112,16 +134,27 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
     }
   });
 
-  // Validate query filters
+  // Validate query filters - FIXED: Only show dialog if NO filters are selected
   const validateQueryExecution = (query: SmartQuery) => {
     const filtersToUse = Object.keys(pendingFilters).length > 0 ? pendingFilters : currentFilters;
     const validation = smartQueriesService.validateQueryFilters(query, filtersToUse);
     
+    console.log('Query validation result:', {
+      queryId: query.id,
+      isValid: validation.isValid,
+      filtersToUse,
+      validation
+    });
+    
     if (!validation.isValid) {
+      // Show ALL available filters in dialog, not just missing ones
+      const allRequiredFilters = query.filter_list?.filter(f => f !== 'region') || 
+                                Object.keys(query.example_filters).filter(f => f !== 'region');
+      
       setValidationDialog({
         open: true,
         query,
-        missingFilters: validation.missingFilters
+        missingFilters: allRequiredFilters // Show all options, not just missing
       });
       return false;
     }
@@ -377,7 +410,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                           mt: 0.5,
                           fontStyle: 'italic'
                         }}>
-                          Required filters must be selected before execution
+                          At least one required filter must be selected before execution
                         </Typography>
                       )}
                     </Box>
@@ -444,7 +477,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                     )}
                   </Box>
 
-                  {/* Individual Filter Chips */}
+                  {/* Individual Filter Chips with USER-FRIENDLY DISPLAY NAMES */}
                   {query.filter_list && query.filter_list.length > 0 && (
                     <Box sx={{ mt: 1 }}>
                       <Typography variant="caption" sx={{ 
@@ -461,11 +494,12 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                           .map((filterKey) => {
                             const filterValue = getFilterValueDisplay(filterKey, filtersToUse);
                             const hasValue = filterValue !== null;
+                            const displayName = getFilterDisplayName(filterKey); // USE HYBRID APPROACH
                             
                             return (
                               <Chip
                                 key={filterKey}
-                                label={hasValue ? `${filterKey}: ${filterValue}` : filterKey}
+                                label={hasValue ? `${displayName}: ${filterValue}` : displayName}
                                 size="small"
                                 sx={{
                                   bgcolor: hasValue 
@@ -508,7 +542,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
         </Stack>
       </Box>
 
-      {/* Validation Dialog */}
+      {/* Validation Dialog with USER-FRIENDLY DISPLAY NAMES */}
       <Dialog
         open={validationDialog.open}
         onClose={closeValidationDialog}
@@ -534,25 +568,48 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255, 255, 255, 0.8)' }}>
-            The following filters are required for this query but haven't been selected:
+            This query requires <strong>at least one</strong> of the following filters to be selected. 
+            You can choose any one (or more) from the list below:
           </Typography>
           <List dense>
-            {validationDialog.missingFilters.map((filter) => (
-              <ListItem key={filter} sx={{ py: 0.5 }}>
-                <ListItemText 
-                  primary={filter}
-                  sx={{ 
-                    '& .MuiListItemText-primary': { 
-                      color: '#f59e0b',
-                      fontSize: '0.9rem'
+            {validationDialog.missingFilters.map((filterKey) => {
+              const filtersToUse = Object.keys(pendingFilters).length > 0 ? pendingFilters : currentFilters;
+              const filterValue = filtersToUse[filterKey];
+              const hasValue = filterValue && (Array.isArray(filterValue) ? filterValue.length > 0 : true);
+              
+              return (
+                <ListItem key={filterKey} sx={{ py: 0.5 }}>
+                  <ListItemText 
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {getFilterDisplayName(filterKey)}
+                        {hasValue && (
+                          <Chip 
+                            label="✓ Selected" 
+                            size="small" 
+                            sx={{ 
+                              bgcolor: 'rgba(16, 185, 129, 0.2)', 
+                              color: '#10b981',
+                              height: 16,
+                              fontSize: '0.6rem'
+                            }} 
+                          />
+                        )}
+                      </Box>
                     }
-                  }}
-                />
-              </ListItem>
-            ))}
+                    sx={{ 
+                      '& .MuiListItemText-primary': { 
+                        color: hasValue ? '#10b981' : '#f59e0b',
+                        fontSize: '0.9rem'
+                      }
+                    }}
+                  />
+                </ListItem>
+              );
+            })}
           </List>
           <Typography variant="body2" sx={{ mt: 2, color: 'rgba(255, 255, 255, 0.8)' }}>
-            Please apply the required filters in the Filters tab before executing this query.
+            Please select at least one filter in the Filters tab, then try executing the query again.
           </Typography>
         </DialogContent>
         <DialogActions>
