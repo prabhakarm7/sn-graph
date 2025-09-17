@@ -29,6 +29,7 @@ import { usePerformanceOptimizedBackendData } from './hooks/usePerformanceOptimi
 import { SmartQuery } from './services/SmartQueriesService';
 
 import { GraphDataProvider } from './context/GraphDataProvider';
+import { enhancedLayoutWithDagre } from './utils/graphLayout';
 
 // Move nodeTypes and edgeTypes outside component to prevent recreation
 const STABLE_NODE_TYPES = nodeTypes;
@@ -140,27 +141,36 @@ function PerformanceOptimizedGraphComponent() {
     setLastQueryResult(result);
     setExecutedQuery(query);
     
-    // If the query returned graph data, we need to update our ReactFlow
     if (result.success && result.render_mode === 'graph' && result.data.nodes) {
-      // Transform the NLQ result to ReactFlow format
-      const transformedNodes = result.data.nodes.map((node: any) => ({
-        ...node,
-        position: node.position || { x: Math.random() * 400, y: Math.random() * 400 }
-      }));
-      
-      setNodes(transformedNodes);
-      setEdges(result.data.relationships || []);
-      
-      // Fit view after a short delay
-      setTimeout(() => {
-        try {
-          fitView({ padding: 0.2, duration: 500 });
-        } catch (error) {
-          console.warn('FitView failed after smart query:', error);
-        }
-      }, 200);
+        // Get raw nodes from NLQ result
+        const rawNodes = result.data.nodes.map((node: any) => ({
+            ...node,
+            position: { x: 0, y: 0 } // Reset any backend positions
+        }));
+        
+        const rawEdges = result.data.relationships || [];
+        
+        // Apply the SAME enhanced Dagre layout used by manual filters
+        const layoutedData = enhancedLayoutWithDagre(rawNodes, rawEdges);
+        
+        console.log('Applied enhancedLayoutWithDagre to NLQ result:', {
+            inputNodes: rawNodes.length,
+            outputNodes: layoutedData.nodes.length
+        });
+        
+        setNodes(layoutedData.nodes);
+        setEdges(layoutedData.edges);
+        
+        // Fit view after layout
+        setTimeout(() => {
+            try {
+                fitView({ padding: 0.2, duration: 500 });
+            } catch (error) {
+                console.warn('FitView failed after smart query:', error);
+            }
+        }, 200);
     }
-  }, [setNodes, setEdges, fitView]);
+}, [setNodes, setEdges, fitView]);
 
   // Handle suggestion application from performance message
   const handleApplySuggestion = useCallback(async (suggestion: any) => {
