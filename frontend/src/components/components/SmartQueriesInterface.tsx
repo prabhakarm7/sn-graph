@@ -134,44 +134,30 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
     }
   });
 
-  // Validate query filters - FIXED: Show all available filters for "any filter" selection
   const validateQueryExecution = (query: SmartQuery) => {
-    const filtersToUse = Object.keys(pendingFilters).length > 0 ? pendingFilters : currentFilters;
-    const validation = smartQueriesService.validateQueryFilters(query, filtersToUse);
-    
-    console.log('Query validation result:', {
-      queryId: query.id,
-      isValid: validation.isValid,
-      filtersToUse,
-      validation
-    });
-    
-    if (!validation.isValid) {
-      // Get all available filters from filter_list (handle both dictionary and array format)
-      let availableFilters: string[] = [];
+      const filtersToUse = Object.keys(pendingFilters).length > 0 ? pendingFilters : currentFilters;
+      const validation = smartQueriesService.validateQueryFilters(query, filtersToUse);
       
-      if (query.filter_list) {
-        if (Array.isArray(query.filter_list)) {
-          availableFilters = query.filter_list.filter(f => f !== 'region');
-        } else if (typeof query.filter_list === 'object') {
-          availableFilters = Object.keys(query.filter_list).filter(f => f !== 'region');
-        }
-      }
-      
-      // Fallback to example_filters if no filter_list
-      if (availableFilters.length === 0) {
-        availableFilters = Object.keys(query.example_filters).filter(f => f !== 'region');
-      }
-      
-      setValidationDialog({
-        open: true,
-        query,
-        missingFilters: availableFilters // Show all options, not just missing
+      console.log('Query validation result:', {
+        queryId: query.id,
+        isValid: validation.isValid,
+        filtersToUse,
+        validation
       });
-      return false;
-    }
-    return true;
-  };
+      
+      if (!validation.isValid) {
+        // Use example_filters keys instead of filter_list
+        const availableFilters = Object.keys(query.example_filters).filter(f => f !== 'region');
+        
+        setValidationDialog({
+          open: true,
+          query,
+          missingFilters: availableFilters // Show all options from example_filters
+        });
+        return false;
+      }
+      return true;
+    };
 
   // Execute smart query
   const executeQuery = async (query: SmartQuery) => {
@@ -434,10 +420,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                         fontWeight: 'medium',
                         lineHeight: 1.3,
                         fontSize: '0.8rem',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
+                        
                       }}>
                         {query.question}
                       </Typography>
@@ -519,7 +502,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                   </Box>
 
                   {/* Individual Filter Chips with USER-FRIENDLY DISPLAY NAMES */}
-                  {query.filter_list && (
+                  {query.example_filters && (
                     <Box sx={{ mt: 1 }}>
                       <Typography variant="caption" sx={{ 
                         color: 'rgba(255, 255, 255, 0.7)',
@@ -531,19 +514,13 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                       </Typography>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {(() => {
-                          // Handle both array and dictionary formats
-                          let filterKeys: string[] = [];
-                          
-                          if (Array.isArray(query.filter_list)) {
-                            filterKeys = query.filter_list.filter((filterKey: string) => filterKey !== 'region');
-                          } else if (typeof query.filter_list === 'object') {
-                            filterKeys = Object.keys(query.filter_list).filter(filterKey => filterKey !== 'region');
-                          }
+                          // Use example_filters keys instead of filter_list
+                          const filterKeys = Object.keys(query.example_filters).filter(filterKey => filterKey !== 'region');
                           
                           return filterKeys.map((filterKey: string) => {
                             const filterValue = getFilterValueDisplay(filterKey, filtersToUse);
                             const hasValue = filterValue !== null;
-                            const displayName = getFilterDisplayName(filterKey); // USE HYBRID APPROACH
+                            const displayName = getFilterDisplayName(filterKey);
                             
                             return (
                               <Chip
@@ -556,12 +533,7 @@ export const SmartQueriesInterface: React.FC<SmartQueriesInterfaceProps> = ({
                                     : 'rgba(156, 163, 175, 0.2)',
                                   color: hasValue ? '#10b981' : '#9ca3af',
                                   fontSize: '0.6rem',
-                                  height: 16,
-                                  // maxWidth: '120px',
-                                  '& .MuiChip-label': {
-                                    // overflow: 'hidden',
-                                    // textOverflow: 'ellipsis'
-                                  }
+                                  height: 16
                                 }}
                               />
                             );

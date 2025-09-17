@@ -342,31 +342,15 @@ export class SmartQueriesService {
     missingFilters: string[];
     availableFilters: string[];
   } {
-    // Handle both dictionary and array filter_list formats
-    let requiredFilterKeys: string[] = [];
-    
-    if (query.filter_list) {
-      if (Array.isArray(query.filter_list)) {
-        // Old format: array of strings
-        requiredFilterKeys = query.filter_list.filter(key => key !== 'region' && key !== 'nodeTypes');
-      } else if (typeof query.filter_list === 'object') {
-        // New format: dictionary/object with dot-notation keys
-        requiredFilterKeys = Object.keys(query.filter_list).filter(key => key !== 'region' && key !== 'nodeTypes');
-      }
-    }
-    
-    // If no filter_list or empty, fallback to example_filters keys
-    if (requiredFilterKeys.length === 0) {
-      requiredFilterKeys = Object.keys(query.example_filters).filter(key => key !== 'region' && key !== 'nodeTypes');
-    }
+    // Use example_filters keys instead of filter_list
+    const requiredFilterKeys = Object.keys(query.example_filters).filter(key => key !== 'region' && key !== 'nodeTypes');
     
     const filtersWithValues: string[] = [];
     const missingFilters: string[] = [];
 
-    console.log('Validation with dot-notation handling:', {
+    console.log('Validation using example_filters:', {
       queryId: query.id,
       requiredFilterKeys,
-      filterListType: Array.isArray(query.filter_list) ? 'array' : typeof query.filter_list,
       currentFiltersKeys: Object.keys(currentFilters)
     });
 
@@ -381,19 +365,18 @@ export class SmartQueriesService {
       );
       
       if (hasValue) {
-        filtersWithValues.push(dotNotationKey); // Keep dot-notation for UI display
+        filtersWithValues.push(dotNotationKey);
       } else {
-        missingFilters.push(dotNotationKey); // Keep dot-notation for UI display
+        missingFilters.push(dotNotationKey);
       }
     });
 
-    // Query is valid if ANY required filter has a value (not ALL)
+    // Query is valid if ANY required filter has a value
     const isValid = filtersWithValues.length > 0;
 
-    console.log('SmartQuery validation result with dot-notation:', {
+    console.log('SmartQuery validation result using example_filters:', {
       queryId: query.id,
       requiredFilterKeys,
-      frontendKeys: requiredFilterKeys.map(k => this.mapDotNotationToFrontendKey(k)),
       filtersWithValues,
       missingFilters,
       isValid,
