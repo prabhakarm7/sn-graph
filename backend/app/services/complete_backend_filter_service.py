@@ -2374,86 +2374,92 @@ class CompleteBackendFilterService:
             print("No RETURN statement found, using query as-is")
             return base_cypher
         
-        # Split at the RETURN statement
+        # Split at the RETURN statement and rebuild with enhanced processing
         parts = base_cypher.split("RETURN")
         if len(parts) < 2:
             return base_cypher
         
         base_query = parts[0].strip()
-        return_clause = "RETURN" + parts[1].strip()
         
-        # Determine target products based on mode
+        # Build the enhanced query with the same WITH processing as build_optimized_union_query
         if recommendations_mode:
-            target_products = "products + incumbent_products"
-            product_types = "['PRODUCT', 'INCUMBENT_PRODUCT']"
-        else:
-            target_products = "products"
-            product_types = "['PRODUCT']"
-        
-        # Build enhanced query with ratings collection
-        enhanced_query = f"""
-        // Original NLQ query
-        {base_query}
-        
-        // Extract nodes from the original result
-        WITH [node IN GraphData.nodes WHERE labels(node)[0] = 'CONSULTANT'] AS consultants,
-            [node IN GraphData.nodes WHERE labels(node)[0] = 'FIELD_CONSULTANT'] AS field_consultants,
-            [node IN GraphData.nodes WHERE labels(node)[0] = 'COMPANY'] AS companies,
-            [node IN GraphData.nodes WHERE labels(node)[0] = 'PRODUCT'] AS products
-            {",[node IN GraphData.nodes WHERE labels(node)[0] = 'INCUMBENT_PRODUCT'] AS incumbent_products" if recommendations_mode else ""},
-            GraphData.relationships AS original_relationships
-        
-        // ENHANCED: Collect ratings for products
-        UNWIND {target_products} AS target_product
-        OPTIONAL MATCH (rating_consultant:CONSULTANT)-[rating_rel:RATES]->(target_product)
-        
-        WITH consultants, field_consultants, companies, products
-            {", incumbent_products" if recommendations_mode else ""}, original_relationships,
-            target_product.id AS product_id,
-            COLLECT({{
-                consultant: rating_consultant.name,
-                rankgroup: rating_rel.rankgroup,
-                rankvalue: rating_rel.rankvalue
-            }}) AS product_ratings
-        
-        WITH consultants, field_consultants, companies, products
-            {", incumbent_products" if recommendations_mode else ""}, original_relationships,
-            COLLECT({{
-                product_id: product_id,
-                ratings: [rating IN product_ratings WHERE rating.consultant IS NOT NULL | rating]
-            }}) AS all_ratings_map
-        
-        // Rebuild nodes with embedded ratings
-        WITH consultants + field_consultants + companies + products
-            {" + incumbent_products" if recommendations_mode else ""} AS allNodes,
-            original_relationships, all_ratings_map
-        
-        RETURN {{
-            nodes: [node IN allNodes | {{
-                id: node.id,
-                type: labels(node)[0],
-                data: {{
+            enhanced_query = f"""
+            {base_query}
+            
+            // Aggregate results - collect all including ratings (RECOMMENDATIONS MODE)
+            WITH 
+                COLLECT(DISTINCT consultant) as all_consultants,
+                COLLECT(DISTINCT field_consultant) as all_field_consultants,
+                COLLECT(DISTINCT company) as all_companies,
+                COLLECT(DISTINCT incumbent_product) as all_incumbent_products,
+                COLLECT(DISTINCT product) as all_products,
+                COLLECT(DISTINCT rel1) + COLLECT(DISTINCT rel2) + COLLECT(DISTINCT rel3) + 
+                COLLECT(DISTINCT rel4) + COLLECT(DISTINCT rel5) as all_relationships
+            
+            // Remove nulls and combine all nodes
+            WITH 
+                [x IN all_consultants WHERE x IS NOT NULL] as consultants,
+                [x IN all_field_consultants WHERE x IS NOT NULL] as field_consultants,
+                [x IN all_companies WHERE x IS NOT NULL] as companies,
+                [x IN all_incumbent_products WHERE x IS NOT NULL] as incumbent_products,
+                [x IN all_products WHERE x IS NOT NULL] as products,
+                [x IN all_relationships WHERE x IS NOT NULL] as relationships
+            
+            WITH consultants + field_consultants + companies + incumbent_products + products as allNodes,
+                relationships
+            
+            // Collect ratings from the RATES relationships we found
+            UNWIND relationships AS rel
+            WITH allNodes, relationships, 
+                CASE WHEN type(rel) = 'RATES' THEN endNode(rel).id ELSE null END as rated_product_id,
+                CASE WHEN type(rel) = 'RATES' THEN startNode(rel).name ELSE null END as rating_consultant_name,
+                CASE WHEN type(rel) = 'RATES' THEN rel.rankgroup ELSE null END as rankgroup,
+                CASE WHEN type(rel) = 'RATES' THEN rel.rankvalue ELSE null END as rankvalue
+            
+            WITH allNodes, relationships,
+                rated_product_id,
+                COLLECT({{
+                    consultant: rating_consultant_name,
+                    rankgroup: rankgroup,
+                    rankvalue: rankvalue
+                }}) as product_ratings
+            
+            WITH allNodes, relationships,
+                COLLECT({{
+                    product_id: rated_product_id,
+                    ratings: [rating IN product_ratings WHERE rating.consultant IS NOT NULL | rating]
+                }}) AS all_ratings_map
+            
+            // Final filtering and formatting - EXCLUDE RATES relationships from frontend
+            WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
+                [rel IN relationships WHERE rel IS NOT NULL AND type(rel) <> 'RATES'] AS filteredRels,
+                all_ratings_map
+            
+            RETURN {{
+                nodes: [node IN filteredNodes | {{
                     id: node.id,
-                    name: coalesce(node.name, node.id),
-                    label: coalesce(node.name, node.id),
-                    region: node.region,
-                    channel: node.channel,
-                    sales_region: node.sales_region,
-                    asset_class: node.asset_class,
-                    pca: node.pca,
-                    aca: node.aca,
-                    consultant_advisor: node.consultant_advisor,
-                    mandate_status: node.mandate_status,
-                    con
-                    ratings: CASE 
-                        WHEN labels(node)[0] IN {product_types} THEN
-                            HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
-                        ELSE
-                            null
-                    END
-                }}
-            }}],
-            relationships: [rel IN filteredRels | {{
+                    type: labels(node)[0],
+                    data: {{
+                        id: node.id,
+                        name: coalesce(node.name, node.id),
+                        label: coalesce(node.name, node.id),
+                        region: node.region,
+                        channel: node.channel,
+                        sales_region: node.sales_region,
+                        asset_class: node.asset_class,
+                        pca: node.pca,
+                        aca: node.aca,
+                        consultant_advisor: node.consultant_advisor,
+                        mandate_status: node.mandate_status,
+                        ratings: CASE 
+                            WHEN labels(node)[0] IN ['PRODUCT', 'INCUMBENT_PRODUCT'] THEN
+                                HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
+                            ELSE
+                                null
+                        END
+                    }}
+                }}],
+                relationships: [rel IN filteredRels | {{
                     id: toString(id(rel)),
                     source: startNode(rel).id,
                     target: endNode(rel).id,
@@ -2484,8 +2490,116 @@ class CompleteBackendFilterService:
                         upside_market_capture_summary: rel.upside_market_capture_summary
                     }}
                 }}]
-        }} AS GraphData
-        """
+            }} AS GraphData
+            """
+        else:
+            # Standard mode - same structure but without incumbent_products
+            enhanced_query = f"""
+            {base_query}
+            
+            // Aggregate results - collect all including ratings (STANDARD MODE)
+            WITH 
+                COLLECT(DISTINCT consultant) as all_consultants,
+                COLLECT(DISTINCT field_consultant) as all_field_consultants,
+                COLLECT(DISTINCT company) as all_companies,
+                COLLECT(DISTINCT product) as all_products,
+                COLLECT(DISTINCT rel1) + COLLECT(DISTINCT rel2) + COLLECT(DISTINCT rel3) + COLLECT(DISTINCT rel4) as all_relationships
+            
+            // Remove nulls and combine all nodes
+            WITH 
+                [x IN all_consultants WHERE x IS NOT NULL] as consultants,
+                [x IN all_field_consultants WHERE x IS NOT NULL] as field_consultants,
+                [x IN all_companies WHERE x IS NOT NULL] as companies,
+                [x IN all_products WHERE x IS NOT NULL] as products,
+                [x IN all_relationships WHERE x IS NOT NULL] as relationships
+            
+            WITH consultants + field_consultants + companies + products as allNodes,
+                relationships
+            
+            // Collect ratings from RATES relationships
+            UNWIND relationships AS rel
+            WITH allNodes, relationships, 
+                CASE WHEN type(rel) = 'RATES' THEN endNode(rel).id ELSE null END as rated_product_id,
+                CASE WHEN type(rel) = 'RATES' THEN startNode(rel).name ELSE null END as rating_consultant_name,
+                CASE WHEN type(rel) = 'RATES' THEN rel.rankgroup ELSE null END as rankgroup,
+                CASE WHEN type(rel) = 'RATES' THEN rel.rankvalue ELSE null END as rankvalue
+
+            WITH allNodes, relationships,
+                rated_product_id,
+                COLLECT({{
+                    consultant: rating_consultant_name,
+                    rankgroup: rankgroup,
+                    rankvalue: rankvalue
+                }}) as product_ratings
+            
+            WITH allNodes, relationships,
+                COLLECT({{
+                    product_id: rated_product_id,
+                    ratings: [rating IN product_ratings WHERE rating.consultant IS NOT NULL | rating]
+                }}) AS all_ratings_map
+            
+            // Final filtering - EXCLUDE RATES relationships from frontend
+            WITH [node IN allNodes WHERE node IS NOT NULL AND node.name IS NOT NULL] AS filteredNodes, 
+                [rel IN relationships WHERE rel IS NOT NULL AND type(rel) <> 'RATES'] AS filteredRels,
+                all_ratings_map
+            
+            RETURN {{
+                nodes: [node IN filteredNodes | {{
+                    id: node.id,
+                    type: labels(node)[0],
+                    data: {{
+                        id: node.id,
+                        name: coalesce(node.name, node.id),
+                        label: coalesce(node.name, node.id),
+                        region: node.region,
+                        channel: node.channel,
+                        sales_region: node.sales_region,
+                        asset_class: node.asset_class,
+                        pca: node.pca,
+                        aca: node.aca,
+                        consultant_advisor: node.consultant_advisor,
+                        mandate_status: node.mandate_status,
+                        ratings: CASE 
+                            WHEN labels(node)[0] = 'PRODUCT' THEN
+                                HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
+                            ELSE
+                                null
+                        END
+                    }}
+                }}],
+                relationships: [rel IN filteredRels | {{
+                    id: toString(id(rel)),
+                    source: startNode(rel).id,
+                    target: endNode(rel).id,
+                    type: 'custom',
+                    data: {{
+                        relType: type(rel),
+                        sourceId: startNode(rel).id,
+                        targetId: endNode(rel).id,
+                        rankgroup: rel.rankgroup,
+                        rankvalue: rel.rankvalue,
+                        rankorder: rel.rankorder,
+                        rating_change: rel.rating_change,
+                        level_of_influence: rel.level_of_influence,
+                        mandate_status: rel.mandate_status,
+                        consultant: rel.consultant,
+                        manager: rel.manager,
+                        commitment_market_value: rel.commitment_market_value,
+                        manager_since_date: rel.manager_since_date,
+                        multi_mandate_manager: rel.multi_mandate_manager,
+                        annualised_alpha_summary: rel.annualised_alpha_summary,
+                        batting_average_summary: rel.batting_average_summary,
+                        downside_market_capture_summary: rel.downside_market_capture_summary,
+                        information_ratio_summary: rel.information_ratio_summary,
+                        opportunity_type: rel.opportunity_type,
+                        returns: rel.returns,
+                        returns_summary: rel.returns_summary,
+                        standard_deviation_summary: rel.standard_deviation_summary,
+                        upside_market_capture_summary: rel.upside_market_capture_summary
+                    }}
+                }}]
+            }} AS GraphData
+            """
         
         return enhanced_query
 
