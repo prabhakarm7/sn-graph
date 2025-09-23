@@ -330,49 +330,38 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
         {data.name}
       </Typography>
 
-      {/* Show evestment_product_guid if available */}
-      {data.evestment_product_guid && (
-        <Chip 
-          label={`GUID: ${data.evestment_product_guid.slice(0, 8)}...`}
-          size="small"
-          sx={{
-            bgcolor: `${colors.primary}20`,
-            color: colors.primary,
-            fontSize: '0.65rem',
-            fontWeight: 'bold',
-            mb: 1
-          }}
-        />
-      )}
-
-      {/* NEW: Mandate Manager Display */}
-      {data.manager && (
-        <Box sx={{ 
-          mb: 1.5,
-          p: 1,
-          borderRadius: 1,
-          bgcolor: 'rgba(16, 185, 129, 0.15)',
-          border: '1px solid rgba(16, 185, 129, 0.3)'
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-            <WorkOutline sx={{ fontSize: '0.9rem', color: '#10b981' }} />
-            <Typography variant="caption" sx={{ 
-              color: '#10b981',
-              fontWeight: 'bold',
-              fontSize: '0.7rem'
-            }}>
-              Mandate Manager
-            </Typography>
-          </Box>
-          <Typography variant="body2" sx={{ 
-            color: 'white',
-            fontSize: '0.8rem',
-            fontWeight: 'medium'
-          }}>
-            {data.manager}
-          </Typography>
-        </Box>
-      )}
+      {/* Show both GUID and Mandate Manager as chips */}
+      <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: 'center' }}>
+        {data.evestment_product_guid && (
+          <Chip 
+            label={`GUID: ${data.evestment_product_guid.slice(0, 8)}...`}
+            size="small"
+            sx={{
+              bgcolor: `${colors.primary}20`,
+              color: colors.primary,
+              fontSize: '0.65rem',
+              fontWeight: 'bold'
+            }}
+          />
+        )}
+        
+        {data.manager && (
+          <Chip 
+            label={`Manager: ${data.manager}`}
+            size="small"
+            icon={<WorkOutline sx={{ fontSize: '0.8rem' }} />}
+            sx={{
+              bgcolor: 'rgba(255, 255, 255, 0.1)',
+              color: 'white',
+              fontSize: '0.65rem',
+              fontWeight: 'medium',
+              '& .MuiChip-icon': {
+                color: 'white'
+              }
+            }}
+          />
+        )}
+      </Box>
       
       <Handle type="source" position={Position.Bottom} style={{ background: ENTITY_COLORS.product.primary }} />
     </div>
