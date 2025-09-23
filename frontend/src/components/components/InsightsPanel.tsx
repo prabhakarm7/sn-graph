@@ -141,14 +141,23 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
 
   // ENHANCED: Format array values with commas
   const formatArrayValue = (value: any): string => {
+    console.log('🔍 formatArrayValue called with:', { value, type: typeof value, isArray: Array.isArray(value) });
+    
     if (Array.isArray(value)) {
-      return value.join(', ');
+      const result = value.join(', ');
+      console.log('✅ Array joined:', { original: value, result });
+      return result;
     }
     if (typeof value === 'string' && value.includes(',')) {
       // Already comma-separated, just clean it up
-      return value.split(',').map(s => s.trim()).join(', ');
+      const parts = value.split(',').map(s => s.trim());
+      const result = parts.join(', ');
+      console.log('✅ String cleaned:', { original: value, parts, result });
+      return result;
     }
-    return String(value || '');
+    const result = String(value || '');
+    console.log('✅ Fallback string conversion:', { original: value, result });
+    return result;
   };
 
   // Helper component for ultra-compact metadata table rows (Name + Value/Visual Combined)
@@ -162,45 +171,74 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
     value: React.ReactNode; 
     valueColor?: string;
     isArray?: boolean;
-  }) => (
-    <TableRow sx={{ 
-      '&:last-child td': { border: 0 },
-      backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
-      '&:hover': { 
-        backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)' 
+  }) => {
+    console.log('🏷️ MetadataRow rendering:', { 
+      label, 
+      valueType: typeof value, 
+      isReactElement: React.isValidElement(value),
+      isArrayProp: isArray,
+      isActualArray: Array.isArray(value),
+      value: React.isValidElement(value) ? '[React Element]' : value
+    });
+
+    // Format value if it's an array or comma-separated string
+    const formatValue = () => {
+      if (React.isValidElement(value)) {
+        console.log('🎨 Returning React element as-is for:', label);
+        return value; // Return React elements as-is
       }
-    }}>
-      <TableCell 
-        component="th" 
-        scope="row" 
-        sx={{ 
-          color: isDarkTheme ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)', 
-          fontSize: '0.75rem',
+      
+      if (isArray || Array.isArray(value)) {
+        console.log('📋 Processing array value for:', label, { isArray, isActualArray: Array.isArray(value), value });
+        const formatted = formatArrayValue(value);
+        console.log('📋 Array formatting result for', label + ':', { original: value, formatted });
+        return formatted;
+      }
+      
+      console.log('➡️ Returning value unchanged for:', label, value);
+      return value;
+    };
+
+    return (
+      <TableRow sx={{ 
+        '&:last-child td': { border: 0 },
+        backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+        '&:hover': { 
+          backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)' 
+        }
+      }}>
+        <TableCell 
+          component="th" 
+          scope="row" 
+          sx={{ 
+            color: isDarkTheme ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)', 
+            fontSize: '0.75rem',
+            fontWeight: 'medium',
+            py: 0.75,
+            px: 1.5,
+            borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
+            width: '45%',
+            verticalAlign: 'middle'
+          }}
+        >
+          {label}
+        </TableCell>
+        <TableCell sx={{ 
+          color: valueColor,
+          fontSize: '0.8rem',
           fontWeight: 'medium',
           py: 0.75,
           px: 1.5,
           borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
-          width: '45%',
-          verticalAlign: 'middle'
-        }}
-      >
-        {label}
-      </TableCell>
-      <TableCell sx={{ 
-        color: valueColor,
-        fontSize: '0.8rem',
-        fontWeight: 'medium',
-        py: 0.75,
-        px: 1.5,
-        borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
-        width: '55%',
-        verticalAlign: 'middle',
-        wordBreak: isArray ? 'break-word' : 'normal'
-      }}>
-        {isArray && typeof value === 'string' ? formatArrayValue(value) : value}
-      </TableCell>
-    </TableRow>
-  );
+          width: '55%',
+          verticalAlign: 'middle',
+          wordBreak: isArray || Array.isArray(value) ? 'break-word' : 'normal'
+        }}>
+          {formatValue()}
+        </TableCell>
+      </TableRow>
+    );
+  };
 
   if (!selectedNode && !selectedEdge) {
     return (
@@ -336,6 +374,26 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
           >
             <TableBody>
               
+              {/* Node ID - for all types except INCUMBENT_PRODUCT */}
+              {type !== 'INCUMBENT_PRODUCT' && (
+                <MetadataRow 
+                  label="ID" 
+                  value={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Circle sx={{ fontSize: '0.5rem', color: getNodeTypeColor(type) }} />
+                      <Typography variant="caption" sx={{ 
+                        fontFamily: 'monospace',
+                        fontSize: '0.75rem',
+                        color: getNodeTypeColor(type),
+                        fontWeight: 'medium'
+                      }}>
+                        {data.id || selectedNode.id}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              )}
+
               {/* Basic Properties */}
               {data.region && (
                 <MetadataRow 
@@ -542,53 +600,111 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                 />
               )}
 
-              {/* Product Ratings - Show all consultant ratings */}
+              {/* Product Ratings - ENHANCED to show main consultant first with star */}
               {(type === 'PRODUCT' || type === 'INCUMBENT_PRODUCT') && data.ratings && data.ratings.length > 0 && (
                 <MetadataRow 
                   label={`Consultant Ratings (${data.ratings.length})`}
                   value={
                     <Stack direction="column" spacing={0.5} sx={{ width: '100%' }}>
-                      {data.ratings.map((rating: any, index: number) => (
-                        <Box 
-                          key={index}
-                          sx={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
-                            p: 0.5,
-                            borderRadius: 1,
-                            bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-                            border: `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`
-                          }}
-                        >
-                          <Typography variant="caption" sx={{ 
-                            fontSize: '0.7rem',
-                            color: isDarkTheme ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.8)',
-                            fontWeight: 'medium',
-                            flexGrow: 1,
-                            minWidth: 0,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}>
-                            {rating.consultant}
-                          </Typography>
-                          <Chip
-                            label={rating.rankgroup || rating.rating || 'N/A'}
-                            size="small"
-                            sx={{
-                              bgcolor: rating.rankgroup === 'Positive' ? '#16a34a' : 
-                                       rating.rankgroup === 'Negative' ? '#dc2626' : 
-                                       rating.rankgroup === 'Introduced' ? '#0891b2' : 
-                                       rating.rankgroup === 'Neutral' ? '#6b7280' : '#6b7280',
-                              color: 'white',
-                              fontSize: '0.65rem',
-                              height: 18,
-                              fontWeight: 'bold',
-                              ml: 1
+                      {(() => {
+                        // Sort ratings: main consultant first, then others
+                        const sortedRatings = [...data.ratings].sort((a, b) => {
+                          if (a.is_main_consultant && !b.is_main_consultant) return -1;
+                          if (!a.is_main_consultant && b.is_main_consultant) return 1;
+                          return (a.consultant || '').localeCompare(b.consultant || '');
+                        });
+                        
+                        return sortedRatings.map((rating: any, index: number) => (
+                          <Box 
+                            key={index}
+                            sx={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center',
+                              p: 0.5,
+                              borderRadius: 1,
+                              bgcolor: rating.is_main_consultant
+                                ? 'linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%)'
+                                : isDarkTheme ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+                              border: rating.is_main_consultant
+                                ? `2px solid rgba(255, 215, 0, 0.3)`
+                                : `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
+                              boxShadow: rating.is_main_consultant
+                                ? '0 2px 4px rgba(255, 215, 0, 0.1)'
+                                : 'none',
+                              position: 'relative'
                             }}
-                          />
-                        </Box>
-                      ))}
+                          >
+                            {/* Star indicator for main consultant */}
+                            {rating.is_main_consultant && (
+                              <Box sx={{
+                                position: 'absolute',
+                                top: -4,
+                                left: -4,
+                                width: 16,
+                                height: 16,
+                                borderRadius: '50%',
+                                bgcolor: '#ffd700',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                                zIndex: 10
+                              }}>
+                                <Star sx={{ fontSize: '0.6rem', color: '#fff' }} />
+                              </Box>
+                            )}
+                            
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                              <Typography variant="caption" sx={{ 
+                                fontSize: '0.7rem',
+                                color: rating.is_main_consultant ? '#ffd700' : isDarkTheme ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.8)',
+                                fontWeight: rating.is_main_consultant ? 'bold' : 'medium',
+                                flex: 1,
+                                minWidth: 0,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }}>
+                                {rating.consultant}
+                              </Typography>
+                              
+                              {/* OWNS indicator for main consultant */}
+                              {rating.is_main_consultant && (
+                                <Chip
+                                  label="OWNS"
+                                  size="small"
+                                  sx={{
+                                    bgcolor: '#ffd700',
+                                    color: '#000',
+                                    fontSize: '0.55rem',
+                                    height: 14,
+                                    fontWeight: 'bold',
+                                    mr: 0.5,
+                                    '& .MuiChip-label': { px: 0.5 }
+                                  }}
+                                />
+                              )}
+                            </Box>
+                            
+                            <Chip
+                              label={rating.rankgroup || rating.rating || 'N/A'}
+                              size="small"
+                              sx={{
+                                bgcolor: rating.rankgroup === 'Positive' ? '#16a34a' : 
+                                        rating.rankgroup === 'Negative' ? '#dc2626' : 
+                                        rating.rankgroup === 'Introduced' ? '#0891b2' : 
+                                        rating.rankgroup === 'Neutral' ? '#6b7280' : '#6b7280',
+                                color: 'white',
+                                fontSize: '0.65rem',
+                                height: 18,
+                                fontWeight: 'bold',
+                                ml: 1,
+                                boxShadow: rating.is_main_consultant ? '0 2px 4px rgba(0, 0, 0, 0.1)' : 'none'
+                              }}
+                            />
+                          </Box>
+                        ));
+                      })()}
                     </Stack>
                   }
                 />
