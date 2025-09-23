@@ -101,6 +101,9 @@ class CompleteBackendFilterService:
                 nodes = graph_data.get('nodes', [])
                 relationships = graph_data.get('relationships', [])
 
+                # NEW: Enhance ratings with main consultant information BEFORE orphan removal
+                nodes = self._enhance_ratings_with_main_consultant(nodes, relationships)
+
                 # Step 3: Post-processing (same for both modes)
                 nodes, relationships = self._remove_orphans_post_processing(nodes, relationships)
                 
@@ -1198,6 +1201,7 @@ class CompleteBackendFilterService:
             WITH allNodes, relationships, 
                 CASE WHEN type(rel) = 'RATES' THEN endNode(rel).id ELSE null END as rated_product_id,
                 CASE WHEN type(rel) = 'RATES' THEN startNode(rel).name ELSE null END as rating_consultant_name,
+                CASE WHEN type(rel) = 'RATES' THEN startNode(rel).id ELSE null END as rating_consultant_id,
                 CASE WHEN type(rel) = 'RATES' THEN rel.rankgroup ELSE null END as rankgroup,
                 CASE WHEN type(rel) = 'RATES' THEN rel.rankvalue ELSE null END as rankvalue
             
@@ -1206,6 +1210,7 @@ class CompleteBackendFilterService:
                 rated_product_id,
                 COLLECT({{
                     consultant: rating_consultant_name,
+                    consultant_id: rating_consultant_id,
                     rankgroup: rankgroup,
                     rankvalue: rankvalue
                 }}) as product_ratings
@@ -1233,6 +1238,7 @@ class CompleteBackendFilterService:
                         channel: node.channel,
                         sales_region: node.sales_region,
                         asset_class: node.asset_class,
+                        manager: node.manager,
                         pca: node.pca,
                         aca: node.aca,
                         consultant_advisor: node.consultant_advisor,
@@ -1345,6 +1351,7 @@ class CompleteBackendFilterService:
             WITH allNodes, relationships, 
                 CASE WHEN type(rel) = 'RATES' THEN endNode(rel).id ELSE null END as rated_product_id,
                 CASE WHEN type(rel) = 'RATES' THEN startNode(rel).name ELSE null END as rating_consultant_name,
+                CASE WHEN type(rel) = 'RATES' THEN startNode(rel).id ELSE null END as rating_consultant_id,
                 CASE WHEN type(rel) = 'RATES' THEN rel.rankgroup ELSE null END as rankgroup,
                 CASE WHEN type(rel) = 'RATES' THEN rel.rankvalue ELSE null END as rankvalue
 
@@ -1353,6 +1360,7 @@ class CompleteBackendFilterService:
                 rated_product_id,
                 COLLECT({{
                     consultant: rating_consultant_name,
+                    consultant_id: rating_consultant_id,
                     rankgroup: rankgroup,
                     rankvalue: rankvalue
                 }}) as product_ratings
@@ -1385,10 +1393,9 @@ class CompleteBackendFilterService:
                         consultant_advisor: node.consultant_advisor,
                         mandate_status: node.mandate_status,
                         ratings: CASE 
-                            WHEN labels(node)[0] = 'PRODUCT' THEN
+                            WHEN labels(node)[0] IN ['PRODUCT', 'INCUMBENT_PRODUCT'] THEN
                                 HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
-                            ELSE
-                                null
+                            ELSE null
                         END
                     }}
                 }}],
@@ -2602,6 +2609,61 @@ class CompleteBackendFilterService:
             """
         
         return enhanced_query
+    
+
+    def _enhance_ratings_with_main_consultant(self, nodes: List[Dict], relationships: List[Dict]) -> List[Dict]:
+        """
+        Post-process product nodes to identify main consultant from OWNS relationships.
+        This is much more reliable than complex Cypher nested queries.
+        """
+        # Create mapping of product_id -> owns_consultant
+        owns_consultant_map = {}
+        
+        for relationship in relationships:
+            rel_data = relationship.get('data', {})
+            if (rel_data.get('relType') == 'OWNS' and 
+                rel_data.get('consultant') and 
+                relationship.get('target')):
+                owns_consultant_map[relationship['target']] = rel_data['consultant']
+        
+        print(f"Found OWNS consultants for {len(owns_consultant_map)} products: {owns_consultant_map}")
+        
+        # Enhance product nodes
+        enhanced_nodes = []
+        for node in nodes:
+            node_data = node.get('data', {})
+            
+            # Only process PRODUCT and INCUMBENT_PRODUCT nodes
+            if (node.get('type') in ['PRODUCT', 'INCUMBENT_PRODUCT'] and 
+                node_data.get('ratings')):
+                
+                owns_consultant = owns_consultant_map.get(node['id'])
+                node_data['owns_consultant'] = owns_consultant
+                
+                # Enhance ratings with is_main_consultant flag
+                enhanced_ratings = []
+                for rating in node_data['ratings']:
+                    enhanced_rating = dict(rating)  # Copy the rating
+                    enhanced_rating['is_main_consultant'] = (
+                        owns_consultant and rating.get('consultant_id') == owns_consultant
+                    )
+                    enhanced_ratings.append(enhanced_rating)
+                
+                # Sort ratings: main consultant first, then alphabetically
+                enhanced_ratings.sort(key=lambda r: (
+                    not r.get('is_main_consultant', False),  # False sorts before True, so main consultant first
+                    r.get('consultant', '')  # Then alphabetical
+                ))
+                
+                node_data['ratings'] = enhanced_ratings
+                
+                main_consultant_count = sum(1 for r in enhanced_ratings if r.get('is_main_consultant'))
+                print(f"Enhanced product {node['id']}: owns_consultant={owns_consultant}, "
+                    f"main_consultant_ratings={main_consultant_count}, total_ratings={len(enhanced_ratings)}")
+            
+            enhanced_nodes.append(node)
+        
+        return enhanced_nodes
 
 # Global service instance
 complete_backend_filter_service = CompleteBackendFilterService()

@@ -17,9 +17,11 @@ import {
   Assessment,           
   Analytics,            
   ShowChart,
-  Psychology,          // For incumbent products
-  Recommend,           // For incumbent products
-  AutoAwesome          // For BI_RECOMMENDS edges
+  Psychology,          
+  Recommend,           
+  AutoAwesome,          
+  Star,                 // For consultant influence (crown alternative)
+  WorkOutline          // For mandate manager
 } from '@mui/icons-material';
 import { AppNodeData, EdgeData, RankGroup } from '../types/GraphTypes';
 import { 
@@ -265,7 +267,7 @@ export const CompanyNode = React.memo(function CompanyNode({ data }: NodeProps<A
   );
 });
 
-// 🏦 INCUMBENT PRODUCT NODE COMPONENT (NEW)
+// 🏦 INCUMBENT PRODUCT NODE COMPONENT (UPDATED with mandate manager)
 export const IncumbentProductNode = React.memo(function IncumbentProductNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -343,14 +345,41 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
         />
       )}
 
-      
+      {/* NEW: Mandate Manager Display */}
+      {data.manager && (
+        <Box sx={{ 
+          mb: 1.5,
+          p: 1,
+          borderRadius: 1,
+          bgcolor: 'rgba(16, 185, 129, 0.15)',
+          border: '1px solid rgba(16, 185, 129, 0.3)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+            <WorkOutline sx={{ fontSize: '0.9rem', color: '#10b981' }} />
+            <Typography variant="caption" sx={{ 
+              color: '#10b981',
+              fontWeight: 'bold',
+              fontSize: '0.7rem'
+            }}>
+              Mandate Manager
+            </Typography>
+          </Box>
+          <Typography variant="body2" sx={{ 
+            color: 'white',
+            fontSize: '0.8rem',
+            fontWeight: 'medium'
+          }}>
+            {data.manager}
+          </Typography>
+        </Box>
+      )}
       
       <Handle type="source" position={Position.Bottom} style={{ background: ENTITY_COLORS.product.primary }} />
     </div>
   );
 });
 
-// 🏦 PRODUCT NODE COMPONENT (Updated)
+// 🏦 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator)
 export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -363,6 +392,9 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
     rg === 'Introduced' ? STATUS_COLORS.neutral : 
     rg === 'Neutral' ? STATUS_COLORS.neutral : STATUS_COLORS.neutral;
 
+  // NEW: Check if there's a consultant in OWNS relationship
+  const hasConsultantInfluence = data.consultant_from_owns || data.owns_consultant;
+  
   // Determine product icon based on asset class
   const getProductIcon = () => {
     const assetClass = data.asset_class?.toLowerCase();
@@ -384,7 +416,9 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
     <div 
       style={{ 
         padding: 18, 
-        background: colors.light, 
+        background: hasConsultantInfluence 
+          ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%)'
+          : colors.light, 
         color: 'white', 
         borderRadius: 18, 
         minWidth: 260, 
@@ -392,13 +426,36 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
         boxShadow: isHovered ? `0 12px 48px ${colors.primary}40` : `0 6px 24px ${colors.primary}20`,
         transform: isHovered ? 'scale(1.03)' : 'scale(1)',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        border: `2px solid ${colors.primary}`,
+        border: hasConsultantInfluence 
+          ? `2px solid #6366f1`  // Purple border for consultant influence
+          : `2px solid ${colors.primary}`,
         backdropFilter: 'blur(20px)',
+        position: 'relative'
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <Handle type="target" position={Position.Top} style={{ background: ENTITY_COLORS.company.primary }} />
+      
+      {/* NEW: Consultant Influence Star Icon */}
+      {hasConsultantInfluence && (
+        <Box sx={{
+          position: 'absolute',
+          top: -8,
+          right: -8,
+          width: 24,
+          height: 24,
+          borderRadius: '50%',
+          bgcolor: '#6366f1',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 8px rgba(99, 102, 241, 0.4)',
+          zIndex: 10
+        }}>
+          <Star sx={{ fontSize: '0.9rem', color: 'white' }} />
+        </Box>
+      )}
       
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1.5, gap: 1 }}>
         {getProductIcon()}
@@ -431,6 +488,35 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
       }}>
         {data.name}
       </Typography>
+
+      {/* NEW: Consultant Influence Indicator */}
+      {hasConsultantInfluence && (
+        <Box sx={{ 
+          mb: 1.5,
+          p: 1,
+          borderRadius: 1,
+          bgcolor: 'rgba(99, 102, 241, 0.15)',
+          border: '1px solid rgba(99, 102, 241, 0.3)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+            <Star sx={{ fontSize: '0.9rem', color: '#6366f1' }} />
+            <Typography variant="caption" sx={{ 
+              color: '#6366f1',
+              fontWeight: 'bold',
+              fontSize: '0.7rem'
+            }}>
+              Consultant Influenced
+            </Typography>
+          </Box>
+          <Typography variant="body2" sx={{ 
+            color: 'white',
+            fontSize: '0.8rem',
+            fontWeight: 'medium'
+          }}>
+            {data.consultant_from_owns || data.owns_consultant || 'Consultant Active'}
+          </Typography>
+        </Box>
+      )}
 
       {/* Show universe properties if available */}
       {(data.universe_name || data.universe_score) && (
@@ -477,50 +563,131 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
               }}>
                 Consultant Ratings
               </Typography>
-            </Box>
-            {data.ratings.slice(0, 3).map((r: any, i: number) => (
-              <Box
-                key={i}
+              {/* Show total count with main consultant indicator */}
+              <Chip 
+                label={`${data.ratings.length}${data.owns_consultant ? ' +★' : ''}`}
+                size="small"
                 sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  p: 0.8,
-                  borderRadius: 1.5,
-                  backgroundColor: `${colors.primary}15`,
-                  border: `1px solid ${colors.primary}20`
+                  bgcolor: data.owns_consultant ? '#ffd70020' : `${colors.primary}20`,
+                  color: data.owns_consultant ? '#ffd700' : colors.primary,
+                  fontSize: '0.6rem',
+                  height: 16,
+                  fontWeight: 'bold'
                 }}
-              >
-                <Typography variant="caption" sx={{ 
-                  fontSize: '0.7rem', 
-                  color: colors.primary,
-                  fontWeight: 'medium'
-                }}>
-                  {r.consultant}
-                </Typography>
-                <Chip
-                  size="small"
-                  label={r.rankgroup}
+              />
+            </Box>
+            {(() => {
+              // Sort ratings: main consultant first, then others
+              const sortedRatings = [...data.ratings].sort((a, b) => {
+                // Main consultant first
+                if (a.is_main_consultant && !b.is_main_consultant) return -1;
+                if (!a.is_main_consultant && b.is_main_consultant) return 1;
+                // Then alphabetical
+                return (a.consultant || '').localeCompare(b.consultant || '');
+              });
+              
+              return sortedRatings.slice(0, 3).map((r: any, i: number) => (
+                <Box
+                  key={i}
                   sx={{
-                    backgroundColor: colorFor(r.rankgroup),
-                    color: '#fff',
-                    height: 20,
-                    fontSize: '0.65rem',
-                    fontWeight: 'bold',
-                    '& .MuiChip-label': { px: 1.5 }
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    p: 0.8,
+                    borderRadius: 1.5,
+                    backgroundColor: r.is_main_consultant 
+                      ? 'linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 193, 7, 0.1) 100%)'
+                      : `${colors.primary}15`,
+                    border: r.is_main_consultant 
+                      ? '2px solid rgba(255, 215, 0, 0.4)'
+                      : `1px solid ${colors.primary}20`,
+                    boxShadow: r.is_main_consultant 
+                      ? '0 2px 8px rgba(255, 215, 0, 0.2)'
+                      : 'none',
+                    position: 'relative'
                   }}
-                />
-              </Box>
-            ))}
+                >
+                  {/* Star indicator for main consultant */}
+                  {r.is_main_consultant && (
+                    <Box sx={{
+                      position: 'absolute',
+                      top: -6,
+                      left: -6,
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      bgcolor: '#ffd700',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                      zIndex: 10
+                    }}>
+                      <Star sx={{ fontSize: '0.7rem', color: '#fff' }} />
+                    </Box>
+                  )}
+                  
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
+                    <Typography variant="caption" sx={{ 
+                      fontSize: '0.7rem', 
+                      color: r.is_main_consultant ? '#ffd700' : colors.primary,
+                      fontWeight: r.is_main_consultant ? 'bold' : 'medium',
+                      flex: 1,
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {r.consultant}
+                    </Typography>
+                    
+                    {/* Main consultant badge */}
+                    {r.is_main_consultant && (
+                      <Chip
+                        label="OWNS"
+                        size="small"
+                        sx={{
+                          bgcolor: '#ffd700',
+                          color: '#000',
+                          fontSize: '0.55rem',
+                          height: 14,
+                          fontWeight: 'bold',
+                          mr: 0.5,
+                          '& .MuiChip-label': { px: 0.5 }
+                        }}
+                      />
+                    )}
+                  </Box>
+                  
+                  <Chip
+                    size="small"
+                    label={r.rankgroup}
+                    sx={{
+                      backgroundColor: colorFor(r.rankgroup),
+                      color: '#fff',
+                      height: 20,
+                      fontSize: '0.65rem',
+                      fontWeight: 'bold',
+                      '& .MuiChip-label': { px: 1.5 },
+                      boxShadow: r.is_main_consultant ? '0 2px 4px rgba(0, 0, 0, 0.2)' : 'none'
+                    }}
+                  />
+                </Box>
+              ));
+            })()}
             {data.ratings.length > 3 && (
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255, 255, 255, 0.6)',
-                fontSize: '0.65rem',
-                textAlign: 'center',
-                mt: 0.5
-              }}>
-                +{data.ratings.length - 3} more ratings
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  fontSize: '0.65rem'
+                }}>
+                  +{data.ratings.length - 3} more ratings
+                </Typography>
+                {/* Show if main consultant is in the hidden ratings */}
+                {data.ratings.length > 3 && 
+                 data.ratings.slice(3).some((r: any) => r.is_main_consultant) && (
+                  <Star sx={{ fontSize: '0.6rem', color: '#ffd700' }} />
+                )}
+              </Box>
             )}
           </Stack>
         ) : (
@@ -547,22 +714,22 @@ export const CustomEdge = React.memo(function CustomEdge({
   // Provide default values for data properties
   const edgeData = data || {};
   const relType = edgeData.relType;
-  const mandateStatus = edgeData.mandateStatus;
-  const levelOfInfluence = edgeData.levelOfInfluence;
+  const mandateStatus = edgeData.mandate_status;
+  const levelOfInfluence = edgeData.level_of_influence;
   const rating = edgeData.rating;
   
   const getEdgeColor = (relType?: string, mandateStatus?: string) => {
     switch (relType) {
       case 'EMPLOYS': return 'url(#employs-gradient)';
-      case 'COVERS': return 'url(#covers-gradient)';
+      case 'COVERS': return 'url(#employs-gradient)';
       case 'RATES': return 'url(#rates-gradient)';
-      case 'BI_RECOMMENDS': return 'url(#bi-recommends-gradient)'; // NEW
+      case 'BI_RECOMMENDS': return 'url(#bi-recommends-gradient)';
       case 'OWNS': 
         // Color based on mandate status for client to product
         switch (mandateStatus) {
-          case 'Active': return STATUS_COLORS.active;                    // Green
-          case 'At Risk': return STATUS_COLORS.atRisk;                   // Red  
-          case 'Conversion in Progress': return STATUS_COLORS.inProgress; // Orange
+          case 'Active': return STATUS_COLORS.active;
+          case 'At Risk': return STATUS_COLORS.atRisk;
+          case 'Conversion in Progress': return STATUS_COLORS.inProgress;
           default: return 'url(#owns-gradient)';
         }
       default: return '#94a3b8';
@@ -586,7 +753,7 @@ export const CustomEdge = React.memo(function CustomEdge({
       // Convert to string if it's a number
       const influenceKey = String(levelOfInfluence);
       const baseWidth = widthMap[influenceKey] || 8;
-      return isHovered ? baseWidth + 3 : baseWidth; // Add 3px on hover
+      return isHovered ? baseWidth + 3 : baseWidth;
     }
     
     // Special width for BI_RECOMMENDS (thicker to show importance)
@@ -606,7 +773,7 @@ export const CustomEdge = React.memo(function CustomEdge({
   // Calculate path for better interaction
   const edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
 
-  // ✅ UPDATED: Enhanced label text for BI_RECOMMENDS
+  // Enhanced label text for BI_RECOMMENDS
   const getLabelText = () => {
     if (relType === 'COVERS') {
       return 'COVERS';
@@ -618,7 +785,7 @@ export const CustomEdge = React.memo(function CustomEdge({
       return 'OWNS';
     }
     if (relType === 'BI_RECOMMENDS') {
-      return 'BI RECOMMENDS'; // Show "RECOMMENDS" for BI_RECOMMENDS
+      return 'BI RECOMMENDS';
     }
     return relType || '';
   };
@@ -633,7 +800,7 @@ export const CustomEdge = React.memo(function CustomEdge({
       }
     }
     if (relType === 'BI_RECOMMENDS') {
-      return { bg: '#f59e0b', text: 'white' }; // Amber background for recommendations
+      return { bg: '#f59e0b', text: 'white' };
     }
     return { bg: APP_THEME_COLORS.surface, text: 'white' };
   };
@@ -657,7 +824,6 @@ export const CustomEdge = React.memo(function CustomEdge({
           <stop offset="0%" stopColor={ENTITY_COLORS.company.primary} />
           <stop offset="100%" stopColor={ENTITY_COLORS.product.primary} />
         </linearGradient>
-        {/* NEW: BI_RECOMMENDS gradient */}
         <linearGradient id="bi-recommends-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="#f59e0b" />
           <stop offset="100%" stopColor="#d97706" />
@@ -690,7 +856,6 @@ export const CustomEdge = React.memo(function CustomEdge({
           pointerEvents: 'none',
           opacity: 1,
           zIndex: 1,
-          // Special styling for BI_RECOMMENDS
           strokeDasharray: relType === 'BI_RECOMMENDS' ? '8 4' : 'none'
         }}
       />
@@ -713,82 +878,81 @@ export const CustomEdge = React.memo(function CustomEdge({
       
       {/* Edge label - always visible for important relationships */}
       {getLabelText() && (
-  <g>
-    {/* Enhanced label background with dynamic sizing */}
-    <rect
-      x={midX - (relType === 'BI_RECOMMENDS' ? 50 : 35)}
-      y={midY - (relType === 'BI_RECOMMENDS' ? 15 : 12)}
-      width={relType === 'BI_RECOMMENDS' ? 100 : 70}
-      height={relType === 'BI_RECOMMENDS' ? 30 : 30}
-      fill={getLabelColor().bg}
-      rx={relType === 'BI_RECOMMENDS' ? 15 : 10}
-      style={{ 
-        opacity: isHovered ? 1 : 0.9,
-        transition: 'opacity 0.3s ease',
-        filter: isHovered ? 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3))' : 'none'
-      }}
-    />
-    
-    {/* Border for mandate status labels and BI_RECOMMENDS */}
-    {((relType === 'OWNS' && mandateStatus) || relType === 'BI_RECOMMENDS') && (
-      <rect
-          x={midX - (relType === 'BI_RECOMMENDS' ? 50 : 35)}
-          y={midY - (relType === 'BI_RECOMMENDS' ? 15 : 12)}
-          width={relType === 'BI_RECOMMENDS' ? 100 : 70}
-          height={relType === 'BI_RECOMMENDS' ? 30 : 30}
-          fill="none"
-          stroke="rgba(255, 255, 255, 0.3)"
-          strokeWidth="1"
-          rx={relType === 'BI_RECOMMENDS' ? 15 : 10}
-        />
-      )}
-      
-      {/* Enhanced text with better positioning for BI_RECOMMENDS */}
-      <text 
-        x={midX} 
-        y={midY + (relType === 'BI_RECOMMENDS' ? 5 : 2)} 
-        textAnchor="middle" 
-        style={{ 
-          fontSize: relType === 'BI_RECOMMENDS' ? 14 : (isHovered ? 12 : 10), 
-          fill: getLabelColor().text, 
-          fontWeight: ((relType === 'OWNS' && mandateStatus) || relType === 'BI_RECOMMENDS') ? 'bold' : isHovered ? 'bold' : 'normal',
-          pointerEvents: 'none',
-          transition: 'all 0.3s ease',
-          letterSpacing: relType === 'BI_RECOMMENDS' ? '0.5px' : 'normal'
-        }}
-      >
-        {getLabelText()}
-      </text>
-      
-      {/* Optional: Add a small icon for BI_RECOMMENDS */}
-      {relType === 'BI_RECOMMENDS' && (
         <g>
-          {/* Star/sparkle icon */}
-          <circle
-            cx={midX + 35}
-            cy={midY}
-            r="8"
-            fill="rgba(255, 255, 255, 0.2)"
-            stroke="rgba(255, 255, 255, 0.4)"
-            strokeWidth="1"
+          {/* Enhanced label background with dynamic sizing */}
+          <rect
+            x={midX - (relType === 'BI_RECOMMENDS' ? 50 : 35)}
+            y={midY - (relType === 'BI_RECOMMENDS' ? 15 : 12)}
+            width={relType === 'BI_RECOMMENDS' ? 100 : 70}
+            height={relType === 'BI_RECOMMENDS' ? 30 : 30}
+            fill={getLabelColor().bg}
+            rx={relType === 'BI_RECOMMENDS' ? 15 : 10}
+            style={{ 
+              opacity: isHovered ? 1 : 0.9,
+              transition: 'opacity 0.3s ease',
+              filter: isHovered ? 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3))' : 'none'
+            }}
           />
-          <text
-            x={midX + 35}
-            y={midY + 3}
-            textAnchor="middle"
-            style={{
-              fontSize: 10,
-              fill: 'white',
-              fontWeight: 'bold',
-              pointerEvents: 'none'
+          
+          {/* Border for mandate status labels and BI_RECOMMENDS */}
+          {((relType === 'OWNS' && mandateStatus) || relType === 'BI_RECOMMENDS') && (
+            <rect
+              x={midX - (relType === 'BI_RECOMMENDS' ? 50 : 35)}
+              y={midY - (relType === 'BI_RECOMMENDS' ? 15 : 12)}
+              width={relType === 'BI_RECOMMENDS' ? 100 : 70}
+              height={relType === 'BI_RECOMMENDS' ? 30 : 30}
+              fill="none"
+              stroke="rgba(255, 255, 255, 0.3)"
+              strokeWidth="1"
+              rx={relType === 'BI_RECOMMENDS' ? 15 : 10}
+            />
+          )}
+          
+          {/* Enhanced text with better positioning for BI_RECOMMENDS */}
+          <text 
+            x={midX} 
+            y={midY + (relType === 'BI_RECOMMENDS' ? 5 : 2)} 
+            textAnchor="middle" 
+            style={{ 
+              fontSize: relType === 'BI_RECOMMENDS' ? 14 : (isHovered ? 12 : 10), 
+              fill: getLabelColor().text, 
+              fontWeight: ((relType === 'OWNS' && mandateStatus) || relType === 'BI_RECOMMENDS') ? 'bold' : isHovered ? 'bold' : 'normal',
+              pointerEvents: 'none',
+              transition: 'all 0.3s ease',
+              letterSpacing: relType === 'BI_RECOMMENDS' ? '0.5px' : 'normal'
             }}
           >
-            ✨
+            {getLabelText()}
           </text>
+          
+          {/* Optional: Add a small icon for BI_RECOMMENDS */}
+          {relType === 'BI_RECOMMENDS' && (
+            <g>
+              <circle
+                cx={midX + 35}
+                cy={midY}
+                r="8"
+                fill="rgba(255, 255, 255, 0.2)"
+                stroke="rgba(255, 255, 255, 0.4)"
+                strokeWidth="1"
+              />
+              <text
+                x={midX + 35}
+                y={midY + 3}
+                textAnchor="middle"
+                style={{
+                  fontSize: 10,
+                  fill: 'white',
+                  fontWeight: 'bold',
+                  pointerEvents: 'none'
+                }}
+              >
+                ✨
+              </text>
+            </g>
+          )}
         </g>
       )}
-    </g>
-  )}
     </g>
   );
 });
@@ -799,7 +963,7 @@ export const nodeTypes = {
   FIELD_CONSULTANT: FieldConsultantNode,
   COMPANY: CompanyNode,
   PRODUCT: ProductNode,
-  INCUMBENT_PRODUCT: IncumbentProductNode, // NEW
+  INCUMBENT_PRODUCT: IncumbentProductNode,
 };
 
 export const edgeTypes = { custom: CustomEdge };

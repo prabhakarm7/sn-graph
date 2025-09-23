@@ -1,4 +1,4 @@
-// Modified InsightsPanel.tsx - Header and Metadata in Same Row (25:75 ratio)
+// Modified InsightsPanel.tsx - Enhanced with comma-separated values, node IDs, and consultant advisor
 
 import React from 'react';
 import { 
@@ -30,7 +30,8 @@ import {
   Psychology,
   Recommend,
   AutoAwesome,
-  Circle
+  Circle,
+  Fingerprint
 } from '@mui/icons-material';
 import { Node, Edge } from 'reactflow';
 import { AppNodeData, EdgeData } from '../types/GraphTypes';
@@ -138,15 +139,29 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
     return { value: 0, displayText: 'Unknown', isUnknown: true };
   };
 
+  // ENHANCED: Format array values with commas
+  const formatArrayValue = (value: any): string => {
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+    if (typeof value === 'string' && value.includes(',')) {
+      // Already comma-separated, just clean it up
+      return value.split(',').map(s => s.trim()).join(', ');
+    }
+    return String(value || '');
+  };
+
   // Helper component for ultra-compact metadata table rows (Name + Value/Visual Combined)
   const MetadataRow = ({ 
     label, 
     value, 
-    valueColor = isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)' 
+    valueColor = isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+    isArray = false 
   }: { 
     label: string; 
     value: React.ReactNode; 
     valueColor?: string;
+    isArray?: boolean;
   }) => (
     <TableRow sx={{ 
       '&:last-child td': { border: 0 },
@@ -179,9 +194,10 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         px: 1.5,
         borderColor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)',
         width: '55%',
-        verticalAlign: 'middle'
+        verticalAlign: 'middle',
+        wordBreak: isArray ? 'break-word' : 'normal'
       }}>
-        {value}
+        {isArray && typeof value === 'string' ? formatArrayValue(value) : value}
       </TableCell>
     </TableRow>
   );
@@ -220,7 +236,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         width: '100%', 
         height: '100%', 
         display: 'flex',
-        flexDirection: 'row', // Changed from 'column' to 'row'
+        flexDirection: 'row',
         bgcolor: isDarkTheme ? 'rgba(15, 23, 42, 0.98)' : 'rgba(255, 255, 255, 0.98)',
         background: isHovered ? `linear-gradient(90deg, ${getNodeTypeColor(type)}20 0%, transparent 100%)` : 'transparent',
         transition: 'background 0.3s ease',
@@ -229,7 +245,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         
         {/* HEADER SECTION - 25% WIDTH */}
         <Box sx={{ 
-          width: '25%', // 25% of total width
+          width: '25%',
           display: 'flex', 
           flexDirection: 'column',
           alignItems: 'center', 
@@ -242,7 +258,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         }}>
           <Avatar sx={{ 
             bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)', 
-            width: 64, // Slightly larger since we have more vertical space
+            width: 64,
             height: 64,
             border: `2px solid ${getNodeTypeColor(type)}`,
             boxShadow: isHovered ? `0 0 20px ${getNodeTypeColor(type)}40` : 'none',
@@ -277,17 +293,29 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                   height: 22
                 }}
               />
+              
+              {/* NEW: Node ID Display */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Fingerprint sx={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.5)' }} />
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  fontSize: '0.65rem',
+                  fontFamily: 'monospace'
+                }}>
+                  {data.id || selectedNode.id}
+                </Typography>
+              </Box>
             </Box>
           </Box>
         </Box>
 
         {/* METADATA TABLE SECTION - 75% WIDTH */}
         <Box sx={{ 
-          width: '75%', // 75% of total width
+          width: '75%',
           overflowY: 'auto',
           p: 1,
           bgcolor: isDarkTheme ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)',
-          minHeight: 0 // Important: allows flex child to shrink
+          minHeight: 0
         }}>
           <Table 
             size="small" 
@@ -313,6 +341,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                 <MetadataRow 
                   label="Region" 
                   value={data.region}
+                  isArray={Array.isArray(data.region)}
                 />
               )}
               
@@ -321,6 +350,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                   label="PCA" 
                   value={data.pca}
                   valueColor="#6366f1"
+                  isArray={Array.isArray(data.pca)}
                 />
               )}
               
@@ -329,6 +359,17 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                   label="ACA" 
                   value={data.aca}
                   valueColor="#8b5cf6"
+                  isArray={Array.isArray(data.aca)}
+                />
+              )}
+              
+              {/* NEW: Consultant Advisor for CONSULTANT nodes */}
+              {type === 'CONSULTANT' && data.consultant_advisor && (
+                <MetadataRow 
+                  label="Consultant Advisor" 
+                  value={data.consultant_advisor}
+                  valueColor="#6366f1"
+                  isArray={Array.isArray(data.consultant_advisor)}
                 />
               )}
               
@@ -336,6 +377,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                 <MetadataRow 
                   label="Sales Region" 
                   value={data.sales_region}
+                  isArray={Array.isArray(data.sales_region)}
                 />
               )}
               
@@ -343,6 +385,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                 <MetadataRow 
                   label="Channel" 
                   value={data.channel}
+                  isArray={Array.isArray(data.channel)}
                 />
               )}
               
@@ -351,6 +394,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                   label="Asset Class" 
                   value={data.asset_class}
                   valueColor="#3b82f6"
+                  isArray={Array.isArray(data.asset_class)}
                 />
               )}
 
@@ -569,7 +613,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         width: '100%', 
         height: '100%', 
         display: 'flex',
-        flexDirection: 'row', // Changed from 'column' to 'row'
+        flexDirection: 'row',
         bgcolor: isDarkTheme ? 'rgba(15, 23, 42, 0.98)' : 'rgba(255, 255, 255, 0.98)',
         background: isHovered ? (() => {
           const color = getRelationshipColor(relType);
@@ -587,7 +631,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
         
         {/* HEADER SECTION - 25% WIDTH */}
         <Box sx={{ 
-          width: '25%', // 25% of total width
+          width: '25%',
           display: 'flex', 
           flexDirection: 'column',
           alignItems: 'center', 
@@ -621,7 +665,6 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
               }}>
                 {relType === 'BI_RECOMMENDS' ? 'BI Recommendation' : relType || 'Connection'}
               </Typography>
-              
             </Box>
             
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
@@ -637,13 +680,24 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                 }}
               />
               
+              {/* NEW: Edge ID Display */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Fingerprint sx={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.5)' }} />
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.6)',
+                  fontSize: '0.65rem',
+                  fontFamily: 'monospace'
+                }}>
+                  {selectedEdge.id}
+                </Typography>
+              </Box>
             </Box>
           </Box>
         </Box>
 
         {/* COMPREHENSIVE METADATA TABLE - 75% WIDTH */}
         <Box sx={{ 
-          width: '75%', // 75% of total width
+          width: '75%',
           overflowY: 'auto',
           p: 1
         }}>
@@ -741,7 +795,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                   label="Commitment Market Value" 
                   value={
                     <Chip
-                      label={`$${Number(edgeData.commitment_market_value).toLocaleString()}`}
+                      label={`${Number(edgeData.commitment_market_value).toLocaleString()}`}
                       size="small"
                       sx={{
                         bgcolor: '#3b82f620',
@@ -791,7 +845,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                 />
               )}
 
-              {relType === 'OWNS' && edgeData.multi_mandate_manager !== undefined && (
+              {relType === 'OWNS' && edgeData.multi_mandate_manager && edgeData.multi_mandate_manager !== undefined && (
                 <MetadataRow 
                   label="Multi-Mandate Manager" 
                   value={
@@ -851,8 +905,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({
                     />
                   )}
 
-                  {edgeData.downside_market_capture_summary
- && (
+                  {edgeData.downside_market_capture_summary && (
                     <MetadataRow 
                       label="Downside Market Capture Summary" 
                       value={edgeData.downside_market_capture_summary}

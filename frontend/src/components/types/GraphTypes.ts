@@ -5,6 +5,7 @@ export interface Rating {
   consultant: string;
   rankgroup: RankGroup;
   score?: number;
+  is_main_consultant?: boolean;
 }
 
 export interface AppNodeData {

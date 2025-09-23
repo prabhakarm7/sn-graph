@@ -1,6 +1,6 @@
-// WorkingFiltersInterface.tsx - Fixed to preserve filters when switching tabs
+// WorkingFiltersInterface.tsx - Fixed version with proper state preservation
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Box, 
   Typography, 
@@ -27,6 +27,9 @@ interface WorkingFiltersInterfaceProps {
   isDarkTheme?: boolean;
 }
 
+// Key for localStorage to make it unique per mode
+const getStorageKey = (mode: boolean) => `workingFilters_pendingFilters_${mode ? 'reco' : 'std'}`;
+
 export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = ({ 
   recommendationsMode = false,
   isDarkTheme = true
@@ -47,6 +50,8 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
   const [localFilters, setLocalFilters] = useState<Partial<FilterCriteria>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const isInitialized = useRef(false);
+  const lastAppliedFiltersRef = useRef<string>('');
+  const currentModeRef = useRef(recommendationsMode);
   
   // Helper function to convert entity objects to names for criteria storage
   const convertEntityToNames = (entities: Array<{id: string, name: string}>): string[] => {
@@ -58,94 +63,93 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
     if (!names || !allOptions) return [];
     return allOptions.filter(option => names.includes(option.name));
   };
-  
-  // FIXED: Initialize local filters only once and preserve them when switching tabs
-  useEffect(() => {
-    if (!isInitialized.current && filterOptions) {
-      const getDefaultNodeTypes = () => {
-        if (recommendationsMode) {
-          return ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT', 'INCUMBENT_PRODUCT'];
-        } else {
-          return ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT'];
+
+  // Write pending filters to localStorage for SmartQueriesInterface to read
+  const storePendingFilters = useCallback((filters: Partial<FilterCriteria>) => {
+    try {
+      // Only store non-empty filters
+      const nonEmptyFilters: any = {};
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && (Array.isArray(value) ? value.length > 0 : true)) {
+          nonEmptyFilters[key] = value;
         }
-      };
-
-      const initialFilters = {
-        regions: currentFilters.regions || currentRegions,
-        sales_regions: currentFilters.sales_regions || [],
-        channels: currentFilters.channels || [],
-        nodeTypes: currentFilters.nodeTypes || getDefaultNodeTypes(),
-        ratings: currentFilters.ratings || [],
-        influenceLevels: currentFilters.influenceLevels || [],
-        assetClasses: currentFilters.assetClasses || [],
-        consultantIds: currentFilters.consultantIds || [],
-        fieldConsultantIds: currentFilters.fieldConsultantIds || [],
-        clientIds: currentFilters.clientIds || [],
-        productIds: currentFilters.productIds || [],
-        incumbentProductIds: currentFilters.incumbentProductIds || [],
-        pcaIds: currentFilters.pcaIds || [],
-        acaIds: currentFilters.acaIds || [],
-        clientAdvisorIds: currentFilters.clientAdvisorIds || [],
-        consultantAdvisorIds: currentFilters.consultantAdvisorIds || [],
-        legacyPcaIds: currentFilters.legacyPcaIds || [],
-        mandateStatuses: currentFilters.mandateStatuses || [],
-        showInactive: currentFilters.showInactive
-      };
-
-      setLocalFilters(initialFilters);
-      isInitialized.current = true;
-      setHasChanges(false);
-      
-      console.log('WorkingFiltersInterface: Initialized with filters:', initialFilters);
-    }
-  }, [filterOptions, currentFilters, currentRegions, recommendationsMode]);
-
-  // FIXED: Only update local filters when there are actual changes from backend, not tab switches
-  useEffect(() => {
-    if (isInitialized.current && !filterLoading) {
-      // Only sync if the applied filters actually changed (not just tab switching)
-      const filtersChanged = JSON.stringify(currentFilters) !== JSON.stringify({
-        regions: localFilters.regions,
-        sales_regions: localFilters.sales_regions,
-        channels: localFilters.channels,
-        nodeTypes: localFilters.nodeTypes,
-        ratings: localFilters.ratings,
-        influenceLevels: localFilters.influenceLevels,
-        assetClasses: localFilters.assetClasses,
-        consultantIds: localFilters.consultantIds,
-        fieldConsultantIds: localFilters.fieldConsultantIds,
-        clientIds: localFilters.clientIds,
-        productIds: localFilters.productIds,
-        incumbentProductIds: localFilters.incumbentProductIds,
-        pcaIds: localFilters.pcaIds,
-        acaIds: localFilters.acaIds,
-        clientAdvisorIds: localFilters.clientAdvisorIds,
-        consultantAdvisorIds: localFilters.consultantAdvisorIds,
-        legacyPcaIds: localFilters.legacyPcaIds,
-        mandateStatuses: localFilters.mandateStatuses,
-        showInactive: localFilters.showInactive
       });
 
-      if (filtersChanged) {
-        console.log('WorkingFiltersInterface: Backend filters changed, syncing local state');
-        setLocalFilters(prev => ({
-          ...prev,
-          ...currentFilters
-        }));
-        setHasChanges(false);
+      const storageKey = getStorageKey(recommendationsMode);
+      
+      if (Object.keys(nonEmptyFilters).length > 0) {
+        localStorage.setItem(storageKey, JSON.stringify(nonEmptyFilters));
+        // Also store for SmartQueries compatibility
+        localStorage.setItem('workingFilters_pendingFilters', JSON.stringify(nonEmptyFilters));
+        console.log('WorkingFilters: Stored pending filters for mode:', recommendationsMode, Object.keys(nonEmptyFilters));
+      } else {
+        localStorage.removeItem(storageKey);
+        localStorage.removeItem('workingFilters_pendingFilters');
       }
+    } catch (error) {
+      console.warn('Failed to store pending filters:', error);
     }
-  }, [currentFilters, filterLoading]);
-  
-  // Check if there are unsaved changes
-  useEffect(() => {
-    if (!isInitialized.current) return;
+  }, [recommendationsMode]);
 
-    const currentSnapshot = {
+  // Read pending filters from localStorage
+  const readPendingFilters = useCallback(() => {
+    try {
+      const storageKey = getStorageKey(recommendationsMode);
+      const storedPending = localStorage.getItem(storageKey);
+      
+      if (storedPending && storedPending.trim() !== '{}' && storedPending.trim() !== '') {
+        const parsedPending = JSON.parse(storedPending);
+        if (Object.keys(parsedPending).length > 0) {
+          console.log('WorkingFilters: Found stored filters for mode:', recommendationsMode, parsedPending);
+          return parsedPending;
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to read pending filters:', error);
+    }
+    return null;
+  }, [recommendationsMode]);
+
+  // Get default node types based on mode
+  const getDefaultNodeTypes = useCallback(() => {
+    if (recommendationsMode) {
+      return ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT', 'INCUMBENT_PRODUCT'];
+    } else {
+      return ['CONSULTANT', 'FIELD_CONSULTANT', 'COMPANY', 'PRODUCT'];
+    }
+  }, [recommendationsMode]);
+  
+  // Initialize local filters - Enhanced with better mode handling
+  useEffect(() => {
+    // Only initialize if we have filterOptions
+    if (!filterOptions) {
+      return;
+    }
+
+    // Handle mode changes
+    if (currentModeRef.current !== recommendationsMode) {
+      console.log('WorkingFilters: Mode changed from', currentModeRef.current, 'to', recommendationsMode);
+      currentModeRef.current = recommendationsMode;
+      isInitialized.current = false; // Force re-initialization on mode change
+    }
+
+    // Skip if already initialized for this mode
+    if (isInitialized.current) {
+      return;
+    }
+
+    console.log('WorkingFilters: Initializing filters for mode:', recommendationsMode);
+
+    // Try to restore from localStorage first
+    let initialFilters = readPendingFilters();
+    let foundStoredFilters = !!initialFilters;
+
+    // Build complete filter object with defaults
+    const defaultFilters = {
       regions: currentFilters.regions || currentRegions,
       sales_regions: currentFilters.sales_regions || [],
       channels: currentFilters.channels || [],
-      nodeTypes: currentFilters.nodeTypes,
+      nodeTypes: currentFilters.nodeTypes || getDefaultNodeTypes(),
       ratings: currentFilters.ratings || [],
       influenceLevels: currentFilters.influenceLevels || [],
       assetClasses: currentFilters.assetClasses || [],
@@ -154,18 +158,126 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
       clientIds: currentFilters.clientIds || [],
       productIds: currentFilters.productIds || [],
       incumbentProductIds: currentFilters.incumbentProductIds || [],
-      pcaIds: currentFilters.pcaIds || [],
-      acaIds: currentFilters.acaIds || [],
       clientAdvisorIds: currentFilters.clientAdvisorIds || [],
       consultantAdvisorIds: currentFilters.consultantAdvisorIds || [],
-      legacyPcaIds: currentFilters.legacyPcaIds || [],
       mandateStatuses: currentFilters.mandateStatuses || [],
-      showInactive: currentFilters.showInactive
+      showInactive: currentFilters.showInactive || false
+    };
+
+    // Use stored filters if available, otherwise use defaults
+    const completeFilters = foundStoredFilters 
+      ? { ...defaultFilters, ...initialFilters }
+      : defaultFilters;
+
+    console.log('WorkingFilters: State restoration debug:', {
+      mode: recommendationsMode,
+      foundStoredFilters,
+      localStorageKeys: foundStoredFilters ? Object.keys(initialFilters) : [],
+      finalKeys: Object.keys(completeFilters).filter(key => {
+        const value = completeFilters[key];
+        return value && (Array.isArray(value) ? value.length > 0 : true);
+      })
+    });
+
+    // Set the filters and mark as initialized
+    setLocalFilters(completeFilters);
+    isInitialized.current = true;
+    setHasChanges(foundStoredFilters);
+    
+    // Store the current applied filters snapshot to track changes
+    lastAppliedFiltersRef.current = JSON.stringify(defaultFilters);
+    
+    // Ensure localStorage is updated with current state
+    if (foundStoredFilters) {
+      storePendingFilters(completeFilters);
+    }
+    
+    console.log('WorkingFilters: Initialized successfully for mode:', recommendationsMode, {
+      foundStoredFilters,
+      hasChanges: foundStoredFilters
+    });
+  }, [filterOptions, recommendationsMode, readPendingFilters, getDefaultNodeTypes, storePendingFilters, currentFilters, currentRegions]);
+
+  // Sync local filters to localStorage whenever they change (but only after initialization)
+  useEffect(() => {
+    if (isInitialized.current) {
+      storePendingFilters(localFilters);
+    }
+  }, [localFilters, storePendingFilters]);
+
+  // Sync FROM applied filters only when they change AND we don't have unsaved changes
+  useEffect(() => {
+    if (!isInitialized.current || filterLoading) {
+      return;
+    }
+
+    // Create current applied filters snapshot
+    const currentAppliedSnapshot = JSON.stringify({
+      regions: currentFilters.regions || currentRegions,
+      sales_regions: currentFilters.sales_regions || [],
+      channels: currentFilters.channels || [],
+      nodeTypes: currentFilters.nodeTypes || getDefaultNodeTypes(),
+      ratings: currentFilters.ratings || [],
+      influenceLevels: currentFilters.influenceLevels || [],
+      assetClasses: currentFilters.assetClasses || [],
+      consultantIds: currentFilters.consultantIds || [],
+      fieldConsultantIds: currentFilters.fieldConsultantIds || [],
+      clientIds: currentFilters.clientIds || [],
+      productIds: currentFilters.productIds || [],
+      incumbentProductIds: currentFilters.incumbentProductIds || [],
+      clientAdvisorIds: currentFilters.clientAdvisorIds || [],
+      consultantAdvisorIds: currentFilters.consultantAdvisorIds || [],
+      mandateStatuses: currentFilters.mandateStatuses || [],
+      showInactive: currentFilters.showInactive || false
+    });
+
+    // Only sync if applied filters actually changed
+    if (currentAppliedSnapshot !== lastAppliedFiltersRef.current) {
+      console.log('WorkingFilters: Applied filters changed, checking if we should sync...');
+      
+      // Check if user has unsaved changes for this mode
+      const hasPendingInStorage = readPendingFilters();
+      if (hasPendingInStorage) {
+        console.log('WorkingFilters: Skipping sync - user has unsaved changes for this mode');
+        lastAppliedFiltersRef.current = currentAppliedSnapshot; // Update the ref but don't sync
+        return;
+      }
+
+      // Safe to sync - no unsaved changes
+      const newAppliedFilters = JSON.parse(currentAppliedSnapshot);
+      console.log('WorkingFilters: Syncing to new applied filters');
+      setLocalFilters(newAppliedFilters);
+      setHasChanges(false);
+      lastAppliedFiltersRef.current = currentAppliedSnapshot;
+    }
+  }, [currentFilters, currentRegions, filterLoading, getDefaultNodeTypes, readPendingFilters]);
+  
+  // Check if there are unsaved changes
+  useEffect(() => {
+    if (!isInitialized.current) return;
+
+    const currentAppliedSnapshot = {
+      regions: currentFilters.regions || currentRegions,
+      sales_regions: currentFilters.sales_regions || [],
+      channels: currentFilters.channels || [],
+      nodeTypes: currentFilters.nodeTypes || getDefaultNodeTypes(),
+      ratings: currentFilters.ratings || [],
+      influenceLevels: currentFilters.influenceLevels || [],
+      assetClasses: currentFilters.assetClasses || [],
+      consultantIds: currentFilters.consultantIds || [],
+      fieldConsultantIds: currentFilters.fieldConsultantIds || [],
+      clientIds: currentFilters.clientIds || [],
+      productIds: currentFilters.productIds || [],
+      incumbentProductIds: currentFilters.incumbentProductIds || [],
+      clientAdvisorIds: currentFilters.clientAdvisorIds || [],
+      consultantAdvisorIds: currentFilters.consultantAdvisorIds || [],
+      mandateStatuses: currentFilters.mandateStatuses || [],
+      showInactive: currentFilters.showInactive || false
     };
     
-    const hasUnsavedChanges = JSON.stringify(localFilters) !== JSON.stringify(currentSnapshot);
+    const hasUnsavedChanges = JSON.stringify(localFilters) !== JSON.stringify(currentAppliedSnapshot);
     setHasChanges(hasUnsavedChanges);
-  }, [localFilters, currentFilters, currentRegions]);
+  }, [localFilters, currentFilters, currentRegions, getDefaultNodeTypes]);
   
   const handleRegionChange = async (newRegion: string) => {
     if (!newRegion) return;
@@ -176,38 +288,34 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
   
   const handleFilterChange = (field: string, value: any) => {
     setLocalFilters(prev => ({ ...prev, [field]: value }));
-    console.log(`Filter changed: ${field}`, value);
+    console.log(`Filter changed (real-time sync): ${field}`, value);
   };
   
-  // Special handler for entity-based filters - FIXED for proper removal handling
+  // Special handler for entity-based filters with auto-apply on removal
   const handleEntityFilterChange = (field: string, entities: Array<{id: string, name: string}>) => {
     const names = convertEntityToNames(entities);
     const currentFieldValue = localFilters[field as keyof FilterCriteria] as string[] || [];
     
-    // Update local state immediately
     const updatedLocalFilters = { ...localFilters, [field]: names };
     setLocalFilters(updatedLocalFilters);
     
-    console.log(`Entity filter changed: ${field}`, names);
+    console.log(`Entity filter changed (real-time sync): ${field}`, names);
     
-    // AUTO-APPLY: If removing items (not adding), auto-apply filters
+    // AUTO-APPLY: If removing items, auto-apply filters
     if (names.length < currentFieldValue.length) {
-      console.log(`Auto-applying filters due to removal in ${field}. Removed:`, 
-        currentFieldValue.filter(item => !names.includes(item)));
-      
-      // Apply filters immediately with the updated local state
+      console.log(`Auto-applying filters due to removal in ${field}`);
       setTimeout(() => {
         applyFilters(updatedLocalFilters);
-      }, 150); // Reduced timeout for faster response
+      }, 150);
     }
   };
 
-  // Add handler for simple filter changes that also supports auto-apply
+  // Handler for simple filter changes with auto-apply on removal
   const handleFilterChangeWithAutoApply = (field: string, value: any) => {
     const updatedLocalFilters = { ...localFilters, [field]: value };
     setLocalFilters(updatedLocalFilters);
     
-    console.log(`Filter with auto-apply changed: ${field}`, value);
+    console.log(`Filter with auto-apply changed (real-time sync): ${field}`, value);
     
     // Check if this is a removal (for array-based filters)
     if (Array.isArray(value) && Array.isArray(localFilters[field as keyof FilterCriteria])) {
@@ -225,10 +333,12 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
     console.log('Applying filters:', localFilters);
     await applyFilters(localFilters);
     
-    // Clear pending filters since they're now applied
+    // Clear pending filters for this mode since they're now applied
     try {
+      const storageKey = getStorageKey(recommendationsMode);
+      localStorage.removeItem(storageKey);
       localStorage.removeItem('workingFilters_pendingFilters');
-      console.log('WorkingFilters: Cleared pending filters after apply');
+      console.log('WorkingFilters: Cleared pending filters after apply for mode:', recommendationsMode);
     } catch (error) {
       console.warn('Failed to clear pending filters after apply:', error);
     }
@@ -237,9 +347,21 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
   const handleResetFilters = () => {
     console.log('Resetting filters');
     resetFilters();
-    // Reset local state as well
+    
+    // Reset the component state completely
     setLocalFilters({});
+    setHasChanges(false);
     isInitialized.current = false;
+    lastAppliedFiltersRef.current = '';
+    
+    // Clear pending filters for both modes
+    try {
+      localStorage.removeItem(getStorageKey(true));
+      localStorage.removeItem(getStorageKey(false));
+      localStorage.removeItem('workingFilters_pendingFilters');
+    } catch (error) {
+      console.warn('Failed to clear pending filters after reset:', error);
+    }
   };
   
   // Node type handling
@@ -256,10 +378,10 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
         nodeTypes: currentTypes.filter(type => type !== nodeType) 
       }));
     }
-    console.log(`Node type ${nodeType} ${checked ? 'added' : 'removed'}`);
+    console.log(`Node type ${nodeType} ${checked ? 'added' : 'removed'} (real-time sync)`);
   };
-  
-  // Styles with purple chip customization
+
+  // Rest of the component styles and rendering logic remains the same...
   const selectStyles = {
     '& .MuiOutlinedInput-root': {
       bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.95)',
@@ -282,7 +404,6 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
         color: '#6366f1'
       }
     },
-    // Purple chip styling for selected values
     '& .MuiChip-root': {
       bgcolor: 'rgba(99, 102, 241, 0.2)',
       color: '#6366f1',
@@ -320,7 +441,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
       }}>
         <CircularProgress sx={{ color: '#6366f1' }} />
         <Typography sx={{ ml: 2, color: 'white' }}>
-          Loading backend-processed filter options...
+          Loading filter options...
         </Typography>
       </Box>
     );
@@ -333,7 +454,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
       flexDirection: 'column',
       bgcolor: 'rgba(15, 23, 42, 0.98)'
     }}>
-      {/* Header - Fixed at top */}
+      {/* Header */}
       <Box sx={{ 
         flexShrink: 0,
         p: 2,
@@ -353,9 +474,8 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
               fontWeight: 'bold',
               fontSize: '1rem'
             }}>
-              Backend Processed Filters
+              Filters {recommendationsMode && '(Recommendations)'}
             </Typography>
-            {/* Debug info */}
             <Chip
               label={`${Object.keys(localFilters).length} filters`}
               size="small"
@@ -409,7 +529,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
                 mb: 1, 
                 fontWeight: 'bold' 
               }}>
-                Region (Backend Data Source)
+                Region (Data Source)
               </Typography>
               <Autocomplete
                 size="small"
@@ -425,22 +545,6 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
               />
             </CardContent>
           </Card>
-
-          {/* Show applied filters count for debugging */}
-          {Object.keys(localFilters).length > 0 && (
-            <Alert severity="info" sx={{ 
-              bgcolor: 'rgba(59, 130, 246, 0.1)', 
-              color: '#3b82f6',
-              border: '1px solid rgba(59, 130, 246, 0.3)'
-            }}>
-              <Typography variant="body2">
-                Active filters: {Object.entries(localFilters)
-                  .filter(([key, value]) => Array.isArray(value) ? value.length > 0 : value)
-                  .map(([key]) => key)
-                  .join(', ') || 'None'}
-              </Typography>
-            </Alert>
-          )}
 
           {/* Node Types Filter */}
           <Card sx={{ 
@@ -522,7 +626,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             gap: 0.5
           }}>
             <Person sx={{ fontSize: '1rem' }} />
-            Entity Filters (Backend Processed)
+            Entity Filters
           </Typography>
 
           {/* Consultants */}
@@ -667,33 +771,6 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
 
-          {/* Legacy PCA/ACA Filters */}
-          <Autocomplete
-            multiple
-            size="small"
-            options={filterOptions.pcas || []}
-            value={localFilters.pcaIds || []}
-            onChange={(_, newValue) => handleFilterChangeWithAutoApply('pcaIds', newValue)}
-            renderInput={(params) => (
-              <TextField {...params} label="PCAs (Legacy)" sx={selectStyles} />
-            )}
-            sx={selectStyles}
-            slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
-          />
-
-          <Autocomplete
-            multiple
-            size="small"
-            options={filterOptions.acas || []}
-            value={localFilters.acaIds || []}
-            onChange={(_, newValue) => handleFilterChangeWithAutoApply('acaIds', newValue)}
-            renderInput={(params) => (
-              <TextField {...params} label="ACAs (Legacy)" sx={selectStyles} />
-            )}
-            sx={selectStyles}
-            slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
-          />
-
           {/* Business Filters */}
           <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)', my: 1 }} />
           
@@ -705,7 +782,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             gap: 0.5
           }}>
             <Assessment sx={{ fontSize: '1rem' }} />
-            Business Filters (Backend Processed)
+            Business Filters
           </Typography>
 
           {/* Sales Regions */}
@@ -831,7 +908,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
         </Stack>
       </Box>
 
-      {/* Sticky Apply Button - Fixed at bottom */}
+      {/* Sticky Apply Button */}
       <Box sx={{ 
         flexShrink: 0,
         px: 2,
@@ -867,7 +944,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
           }}
         >
           {filterLoading && <CircularProgress size={16} sx={{ color: 'white' }} />}
-          Apply Backend Filters
+          Apply Filters
           {hasChanges && (
             <Chip 
               label="!" 
