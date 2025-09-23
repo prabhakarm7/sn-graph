@@ -416,9 +416,7 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
     <div 
       style={{ 
         padding: 18, 
-        background: hasConsultantInfluence 
-          ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%)'
-          : colors.light, 
+        background: colors.light, 
         color: 'white', 
         borderRadius: 18, 
         minWidth: 260, 
@@ -426,9 +424,7 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
         boxShadow: isHovered ? `0 12px 48px ${colors.primary}40` : `0 6px 24px ${colors.primary}20`,
         transform: isHovered ? 'scale(1.03)' : 'scale(1)',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        border: hasConsultantInfluence 
-          ? `2px solid #6366f1`  // Purple border for consultant influence
-          : `2px solid ${colors.primary}`,
+        border: `2px solid ${colors.primary}`,
         backdropFilter: 'blur(20px)',
         position: 'relative'
       }}
@@ -489,34 +485,6 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
         {data.name}
       </Typography>
 
-      {/* NEW: Consultant Influence Indicator */}
-      {hasConsultantInfluence && (
-        <Box sx={{ 
-          mb: 1.5,
-          p: 1,
-          borderRadius: 1,
-          bgcolor: 'rgba(99, 102, 241, 0.15)',
-          border: '1px solid rgba(99, 102, 241, 0.3)'
-        }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-            <Star sx={{ fontSize: '0.9rem', color: '#6366f1' }} />
-            <Typography variant="caption" sx={{ 
-              color: '#6366f1',
-              fontWeight: 'bold',
-              fontSize: '0.7rem'
-            }}>
-              Consultant Influenced
-            </Typography>
-          </Box>
-          <Typography variant="body2" sx={{ 
-            color: 'white',
-            fontSize: '0.8rem',
-            fontWeight: 'medium'
-          }}>
-            {data.consultant_from_owns || data.owns_consultant || 'Consultant Active'}
-          </Typography>
-        </Box>
-      )}
 
       {/* Show universe properties if available */}
       {(data.universe_name || data.universe_score) && (
