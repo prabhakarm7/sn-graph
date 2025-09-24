@@ -10,7 +10,9 @@ from neo4j import GraphDatabase, Session
 from neo4j.exceptions import Neo4jError
 
 from app.config import (
-    NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, NEO4J_DATABASE, REGIONS
+    NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, NEO4J_DATABASE, REGIONS,
+    NEO4J_MAX_CONNECTION_LIFETIME, NEO4J_CONNECTION_ACQUISITION_TIMEOUT, 
+    NEO4J_MAX_CONNECTION_POOL_SIZE
 )
 # ADD THIS IMPORT
 from app.services.memory_filter_cache import memory_filter_cache
@@ -27,7 +29,13 @@ class CompleteBackendFilterService:
         self.driver = GraphDatabase.driver(
             NEO4J_URI,
             auth=(NEO4J_USERNAME, NEO4J_PASSWORD),
-            database=NEO4J_DATABASE
+            database=NEO4J_DATABASE,
+            max_connection_lifetime=NEO4J_MAX_CONNECTION_LIFETIME,  # 1 hour
+            max_connection_pool_size=NEO4J_MAX_CONNECTION_POOL_SIZE,
+            connection_acquisition_timeout=NEO4J_CONNECTION_ACQUISITION_TIMEOUT,
+            # Add these for stability
+            keep_alive=True,
+            max_retry_time=30
         )
         # ADD THIS LINE
         self.cache = memory_filter_cache
