@@ -65,6 +65,7 @@ function PerformanceOptimizedGraphComponent() {
     error,
     changeRegions,       
     applyFilters,        
+    applySmartQueryResult, // ADD THIS LINE 
     resetFilters,        
     getAvailableRegions,
     hasData,
@@ -133,7 +134,7 @@ function PerformanceOptimizedGraphComponent() {
     return () => clearTimeout(timeoutId);
   }, [graphData, setNodes, setEdges, fitView, dataSource]);
 
-  // Handle Smart Query execution
+  
   // Handle Smart Query execution
   const handleQueryExecuted = useCallback(async (result: any, query: SmartQuery) => {
     console.log('Smart Query executed:', query.question, result);
@@ -141,36 +142,11 @@ function PerformanceOptimizedGraphComponent() {
     setLastQueryResult(result);
     setExecutedQuery(query);
     
-    if (result.success && result.render_mode === 'graph' && result.data.nodes) {
-        // Get raw nodes from NLQ result
-        const rawNodes = result.data.nodes.map((node: any) => ({
-            ...node,
-            position: { x: 0, y: 0 } // Reset any backend positions
-        }));
-        
-        const rawEdges = result.data.relationships || [];
-        
-        // Apply the SAME enhanced Dagre layout used by manual filters
-        const layoutedData = enhancedLayoutWithDagre(rawNodes, rawEdges);
-        
-        console.log('Applied enhancedLayoutWithDagre to NLQ result:', {
-            inputNodes: rawNodes.length,
-            outputNodes: layoutedData.nodes.length
-        });
-        
-        setNodes(layoutedData.nodes);
-        setEdges(layoutedData.edges);
-        
-        // Fit view after layout
-        setTimeout(() => {
-            try {
-                fitView({ padding: 0.2, duration: 500 });
-            } catch (error) {
-                console.warn('FitView failed after smart query:', error);
-            }
-        }, 200);
+    // Use hook method instead of direct ReactFlow updates
+    if (result.success) {
+      await applySmartQueryResult(result, query);
     }
-}, [setNodes, setEdges, fitView]);
+  }, [applySmartQueryResult]);
 
   // Handle suggestion application from performance message
   const handleApplySuggestion = useCallback(async (suggestion: any) => {

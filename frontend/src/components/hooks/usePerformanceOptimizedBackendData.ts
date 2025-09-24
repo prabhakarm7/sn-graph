@@ -344,6 +344,101 @@ export const usePerformanceOptimizedBackendData = () => {
   }, [currentRegions, currentFilters, initialLoading, filterLoading, apiService, synchronizeFiltersWithBackend]);
   
   /**
+ * NEW: Apply Smart Query result through the same pipeline as filters
+ */
+  const applySmartQueryResult = useCallback(async (queryResult: any, query: any) => {
+    console.log('Performance Optimization: Applying Smart Query result');
+    
+    if (initialLoading || filterLoading) {
+      console.warn('Cannot apply Smart Query while loading');
+      return;
+    }
+    
+    setFilterLoading(true);
+    setError(null);
+    
+    try {
+      // Set backend response (same format as applyFilters)
+      setBackendResponse(queryResult);
+
+      // Update filter options if provided
+      if (queryResult.filter_options) {
+        const transformedOptions = transformBackendFilterOptions(queryResult.filter_options);
+        setFilterOptions(transformedOptions);
+      }
+      
+      // Performance check based on existing API response structure
+      if (queryResult.render_mode === 'summary') {
+        // Check if it's a "too many nodes" case
+        if (queryResult.data.total_nodes > 100) {
+          setGraphData({
+            nodes: [],
+            edges: [],
+            canRender: false,
+            performance: {
+              mode: 'too_many_nodes',
+              message: `Smart Query returned ${queryResult.data.total_nodes} nodes. Please refine your query.`,
+              nodeCount: queryResult.data.total_nodes,
+              suggestions: queryResult.data.suggestions || []
+            }
+          });
+        } else {
+          setGraphData({
+            nodes: [],
+            edges: [],
+            canRender: false,
+            performance: {
+              mode: 'filters_only',
+              message: queryResult.data.message || 'Smart Query returned no data.',
+              nodeCount: queryResult.data.total_nodes
+            }
+          });
+        }
+      } else {
+        // Good to render - check node count for performance
+        const transformedData = transformWithEnhancedLayout(queryResult);
+        if (transformedData.nodes.length > 100) {
+          setGraphData({
+            nodes: [],
+            edges: [],
+            canRender: false,
+            performance: {
+              mode: 'too_many_nodes',
+              message: `Smart Query returned ${transformedData.nodes.length} nodes. Consider refining the query.`,
+              nodeCount: transformedData.nodes.length,
+              suggestions: queryResult.data.suggestions || []
+            }
+          });
+        } else {
+          // Good to render
+          setGraphData({
+            ...transformedData,
+            performance: {
+              mode: 'graph_ready',
+              message: `Smart Query executed successfully (${transformedData.nodes.length} nodes)`,
+              nodeCount: transformedData.nodes.length
+            }
+          });
+        }
+      }
+      
+    } catch (err) {
+      console.error('Performance Optimization: Smart Query application error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to apply Smart Query result');
+      setGraphData({
+        nodes: [],
+        edges: [],
+        canRender: false,
+        performance: {
+          mode: 'filters_only',
+          message: 'Error applying Smart Query result'
+        }
+      });
+    } finally {
+      setFilterLoading(false);
+    }
+  }, [initialLoading, filterLoading]);
+  /**
    * STEP 3: Region change - back to filters only
    * UPDATED: Properly resets to region defaults
    */
@@ -439,6 +534,8 @@ export const usePerformanceOptimizedBackendData = () => {
       loadRegionFiltersOnly(['NAI']);
     }
   }, [hasInitialized, loadRegionFiltersOnly]);
+
+  
   
   return {
     // Optimized data with performance state
@@ -456,6 +553,7 @@ export const usePerformanceOptimizedBackendData = () => {
     // Performance-optimized actions
     changeRegions,
     applyFilters,
+    applySmartQueryResult, // ADD THIS LINE
     resetFilters,
     getAvailableRegions,
     
@@ -521,4 +619,7 @@ function transformWithEnhancedLayout(backendResponse: any): OptimizedGraphData {
     }
   };
 }
+
+
+
 
