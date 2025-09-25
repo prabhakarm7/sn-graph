@@ -21,6 +21,8 @@ export interface FilterCriteria {
   consultantAdvisorIds?: string[];
   legacyPcaIds?: string[];
   mandateStatuses?: string[];
+  mandateManagers?: string[];     // ADD THIS LINE
+  universeNames?: string[];       // ADD THIS LINE
   showInactive?: boolean;
 }
 
@@ -44,6 +46,8 @@ export interface FilterOptions {
   ratings: string[];
   influenceLevels: string[];
   mandateStatuses: string[];
+  mandateManagers?: string[];     // ADD THIS LINE
+  universeNames?: string[];       // ADD THIS LINE
   jpm_flags: string[];
   privacy_levels: string[];
 }

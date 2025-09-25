@@ -161,6 +161,8 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
       clientAdvisorIds: currentFilters.clientAdvisorIds || [],
       consultantAdvisorIds: currentFilters.consultantAdvisorIds || [],
       mandateStatuses: currentFilters.mandateStatuses || [],
+      mandateManagers: currentFilters.mandateManagers || [],
+      universeNames: currentFilters.universeNames || [],
       showInactive: currentFilters.showInactive || false
     };
 
@@ -546,7 +548,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             </CardContent>
           </Card>
 
-          {/* Node Types Filter */}
+          {/* Node Types Filter 
           <Card sx={{ 
             bgcolor: 'rgba(59, 130, 246, 0.1)', 
             border: '1px solid rgba(59, 130, 246, 0.3)',
@@ -615,7 +617,7 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
               </FormGroup>
             </CardContent>
           </Card>
-
+          */}
           {/* Entity Filters */}
           <Typography variant="subtitle2" sx={{ 
             color: 'white', 
@@ -693,26 +695,24 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
 
-          {/* Incumbent Products (Recommendations Mode) */}
-          {recommendationsMode && (
-            <Card sx={{ 
-              bgcolor: 'rgba(245, 158, 11, 0.1)', 
-              border: '2px solid rgba(245, 158, 11, 0.3)',
-              backdropFilter: 'blur(10px)'
-            }}>
-              <CardContent sx={{ p: 2 }}>
-                <Typography variant="subtitle2" sx={{ 
-                  color: '#f59e0b', 
-                  mb: 1, 
-                  fontWeight: 'bold', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 0.5 
-                }}>
-                  <Psychology sx={{ fontSize: '1rem' }} />
-                  Incumbent Products (AI Recommendations)
-                </Typography>
-                <Autocomplete
+          
+        
+        {recommendationsMode && (
+          <>
+          {/* Recommendation Filters */}
+          <Typography variant="subtitle2" sx={{ 
+            color: 'white', 
+            fontWeight: 'bold', 
+            mt: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.5
+          }}>
+            <Business sx={{ fontSize: '1rem' }} />
+            Recommendation Filters
+          </Typography>
+
+          <Autocomplete
                   multiple
                   size="small"
                   options={filterOptions.incumbent_products || []}
@@ -726,8 +726,33 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
                   sx={selectStyles}
                   slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
                 />
-              </CardContent>
-            </Card>
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={filterOptions?.mandateManagers || []}
+                  value={localFilters.mandateManagers || []}
+                  onChange={(_, newValue) => handleFilterChangeWithAutoApply('mandateManagers', newValue)}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Mandate Managers" sx={selectStyles} />
+                  )}
+                  sx={selectStyles}
+                  slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
+                />
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={filterOptions?.universeNames || []}
+                  value={localFilters.universeNames || []}
+                  onChange={(_, newValue) => handleFilterChangeWithAutoApply('universeNames', newValue)}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Universe Names" sx={selectStyles} />
+                  )}
+                  sx={selectStyles}
+                  slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
+                />
+
+            </>
+
           )}
 
           {/* Advisor Filters */}

@@ -34,8 +34,7 @@ class CompleteBackendFilterService:
             max_connection_pool_size=NEO4J_MAX_CONNECTION_POOL_SIZE,
             connection_acquisition_timeout=NEO4J_CONNECTION_ACQUISITION_TIMEOUT,
             # Add these for stability
-            keep_alive=True,
-            max_retry_time=30
+            keep_alive=True
         )
         # ADD THIS LINE
         self.cache = memory_filter_cache
@@ -87,8 +86,9 @@ class CompleteBackendFilterService:
                     # Step 1B: TRADITIONAL MODE - use existing query building
                     query, params = self._build_optimized_union_query(region, filters, recommendations_mode)
                     print(f"TRADITIONAL MODE: Executing structured filter query for {region}")
-                    
+                    print(query)
                     result = session.run(query, params)
+                    
                     records = list(result)
                     
                     applied_filters = filters
@@ -206,7 +206,6 @@ class CompleteBackendFilterService:
         cached_options = self.cache.get(region, recommendations_mode)
         if cached_options:
             print(f"MEMORY CACHE HIT for filter options: {region}, rec_mode: {recommendations_mode}")
-            print(cached_options)
             return cached_options
         
         # Cache miss - compute fresh and cache
@@ -451,6 +450,8 @@ class CompleteBackendFilterService:
         client_advisors = set()
         consultant_advisors = set()
         mandate_statuses = set()  # NEW: Extract from actual data
+        mandate_managers= set()
+        universe_names = set()
         influence_levels = set()  # NEW: Extract from actual data
         ratings = set()  # NEW: Extract from actual data
         
@@ -460,6 +461,7 @@ class CompleteBackendFilterService:
         companies_dict = {}
         products_dict = {}
         incumbent_products_dict = {}
+        
         
         # Extract data from nodes
         for node in nodes:
@@ -512,6 +514,10 @@ class CompleteBackendFilterService:
                         for rating in data['ratings']:
                             if rating.get('rankgroup'):
                                 ratings.add(rating['rankgroup'])
+
+                    if data.get('universe_name'):
+                        self._add_to_string_set(data['universe_name'], universe_names)
+
                                 
             elif node_type == 'INCUMBENT_PRODUCT' and data.get('name'):
                 name = data['name'].strip()
@@ -526,6 +532,9 @@ class CompleteBackendFilterService:
                         for rating in data['ratings']:
                             if rating.get('rankgroup'):
                                 ratings.add(rating['rankgroup'])
+
+        
+           
         
         # NEW: Extract data from relationships
         for relationship in relationships:
@@ -542,6 +551,10 @@ class CompleteBackendFilterService:
             # Extract influence levels from EMPLOYS relationships (if they have it)
             if rel_data.get('relType') == 'EMPLOYS' and rel_data.get('level_of_influence'):
                 self._add_to_string_set(rel_data['level_of_influence'], influence_levels)
+
+            # Extract mandate managers from OWNS relationships
+            if rel_data.get('relType') == 'OWNS' and rel_data.get('manager'):
+                self._add_to_string_set(rel_data['manager'], mandate_managers)
         
         # Convert dictionaries to sorted lists (already deduplicated)
         consultants = sorted(list(consultants_dict.values()), key=lambda x: x['name'])
@@ -560,6 +573,8 @@ class CompleteBackendFilterService:
         # NEW: Convert extracted relationship data to sorted lists
         mandate_statuses_list = sorted(list(mandate_statuses))[:MAX_FILTER_RESULTS]
         influence_levels_list = sorted(list(influence_levels))[:MAX_FILTER_RESULTS]
+        mandate_managers_list = sorted(list(mandate_managers))[:MAX_FILTER_RESULTS]
+        universe_names_list = sorted(list(universe_names))[:MAX_FILTER_RESULTS]
         ratings_list = sorted(list(ratings))[:MAX_FILTER_RESULTS]
         
         # Build filtered options structure with guaranteed uniqueness
@@ -577,10 +592,13 @@ class CompleteBackendFilterService:
             "mandate_statuses": mandate_statuses_list if mandate_statuses_list else ["Active", "At Risk", "Conversion in Progress"],  # Fallback to static if none found
             "influence_levels": influence_levels_list if influence_levels_list else ["1", "2", "3", "4", "High", "medium", "low", "UNK"],  # Fallback to static if none found
             "ratings": ratings_list if ratings_list else ["Positive", "Negative", "Neutral", "Introduced"]  # Fallback to static if none found
+        
         }
         
         if recommendations_mode:
             filtered_options["incumbent_products"] = incumbent_products[:MAX_FILTER_RESULTS]
+            filtered_options["mandate_managers"] = mandate_managers_list[:MAX_FILTER_RESULTS]
+            filtered_options["incumbent_universe_namesproducts"] = universe_names_list[:MAX_FILTER_RESULTS]
         
         print(f"Filtered options extracted from actual data: {[(k, len(v) if isinstance(v, list) else 'not_list') for k, v in filtered_options.items()]}")
         print(f"Found {len(mandate_statuses_list)} mandate statuses, {len(influence_levels_list)} influence levels, {len(ratings_list)} ratings")
@@ -1061,6 +1079,10 @@ class CompleteBackendFilterService:
             params['influenceLevels'] = filters['influence_levels']
         if filters.get('markets'):
             params['markets'] = filters['markets']
+        if filters.get('mandateManagers'):
+            params['mandateManagers'] = filters['mandateManagers']
+        if filters.get('universeNames'):
+            params['universeNames'] = filters['universeNames']
         
         # Helper functions
         def build_company_conditions(company_var: str) -> List[str]:
@@ -1101,6 +1123,9 @@ class CompleteBackendFilterService:
             if filters.get('assetClasses'):
                 conditions.append(f"""ANY(ac IN $assetClasses WHERE 
                     ac = {product_var}.asset_class OR ac IN {product_var}.asset_class)""")
+            if filters.get('universeNames'):
+                conditions.append(f"""ANY(un IN $universeNames WHERE 
+                    un = {product_var}.universe_name OR un IN {product_var}.universe_name)""")
             return conditions
         
         def build_field_consultant_conditions(fc_var: str) -> List[str]:
@@ -1114,6 +1139,10 @@ class CompleteBackendFilterService:
             if filters.get('mandateStatuses'):
                 conditions.append(f"""ANY(ms IN $mandateStatuses WHERE 
                     ms = {rel_var}.mandate_status OR ms IN {rel_var}.mandate_status)""")
+                
+            if filters.get('mandateManagers'):
+                conditions.append(f"""ANY(mm IN $mandateManagers WHERE 
+                    mm = {rel_var}.manager OR mm IN {rel_var}.manager)""")
             return conditions
         
         def build_influence_conditions(rel_var: str) -> List[str]:
@@ -1509,7 +1538,7 @@ class CompleteBackendFilterService:
                 # Simplified query - just collect raw data without complex flattening
                 filter_query = f"""
                 MATCH (c:COMPANY) WHERE (c.region = $region OR $region IN c.region)
-                OPTIONAL MATCH (c)-[:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
+                OPTIONAL MATCH (c)-[owns:OWNS]->(ip:INCUMBENT_PRODUCT)-[:BI_RECOMMENDS]->(p:PRODUCT)
                 OPTIONAL MATCH path1 = (cons:CONSULTANT)-[:EMPLOYS]->(fc:FIELD_CONSULTANT)-[:COVERS]->(c)
                 OPTIONAL MATCH path2 = (cons2:CONSULTANT)-[:COVERS]->(c)
                 OPTIONAL MATCH (any_cons:CONSULTANT)-[rating:RATES]->(any_prod:PRODUCT)
@@ -1528,7 +1557,9 @@ class CompleteBackendFilterService:
                     companies: COLLECT(DISTINCT {{id: c.name, name: c.name}}),
                     products: COLLECT(DISTINCT {{id: p.name, name: p.name}}),
                     incumbent_products: COLLECT(DISTINCT {{id: ip.name, name: ip.name}}),
-                    ratings: COLLECT(DISTINCT rating.rankgroup)
+                    ratings: COLLECT(DISTINCT rating.rankgroup),
+                    raw_mandate_managers: COLLECT(DISTINCT owns.manager),
+                    raw_universe_names: COLLECT(DISTINCT p.universe_name)
                 }} AS RawFilterData
                 """
             else:
@@ -1579,6 +1610,9 @@ class CompleteBackendFilterService:
                 )
                 cleaned_options['ratings'] = self._flatten_and_clean_array(raw_data.get('ratings', []))
                 
+                cleaned_options['mandate_managers'] = self._flatten_and_clean_array(raw_data.get('raw_mandate_managers', []))
+                cleaned_options['universe_names'] = self._flatten_and_clean_array(raw_data.get('raw_universe_names', []))
+
                 # Clean entity lists (already properly formatted from Neo4j)
                 cleaned_options['consultants'] = self._clean_entity_list(raw_data.get('consultants', []))
                 cleaned_options['field_consultants'] = self._clean_entity_list(raw_data.get('field_consultants', []))
@@ -1733,7 +1767,10 @@ class CompleteBackendFilterService:
         }
         
         if recommendations_mode:
-            base_options["incumbent_products"] = []
+            base_options["incumbent_products"] = [],
+            base_options["mandate_managers"] = [],
+            base_options["universe_names"] = []
+
         
         return base_options  
     

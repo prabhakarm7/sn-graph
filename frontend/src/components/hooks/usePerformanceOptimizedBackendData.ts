@@ -65,7 +65,9 @@ export const usePerformanceOptimizedBackendData = () => {
     clientAdvisorIds: [],
     consultantAdvisorIds: [],
     legacyPcaIds: [],
-    mandateStatuses: []
+    mandateStatuses: [],
+    mandateManagers: [],
+    universeNames: []
   });
   
   const apiService = SimplifiedApiService.getInstance();
@@ -124,7 +126,9 @@ export const usePerformanceOptimizedBackendData = () => {
       'mandateStatuses': 'mandateStatuses',
       'sales_regions': 'sales_regions',
       'ratings': 'ratings',
-      'influenceLevels': 'influenceLevels'
+      'influenceLevels': 'influenceLevels',
+      'mandateManagers': 'mandateManagers',
+      'universeNames': 'universeNames'
     };
     
     return keyMap[backendKey] || null;
@@ -188,7 +192,9 @@ export const usePerformanceOptimizedBackendData = () => {
         clientAdvisorIds: [],
         consultantAdvisorIds: [],
         legacyPcaIds: [],
-        mandateStatuses: []
+        mandateStatuses: [],
+        mandateManagers: [],    // ADD THIS LINE
+        universeNames: []       // ADD THIS LINE
       };
       setCurrentFilters(defaultFilters);
       

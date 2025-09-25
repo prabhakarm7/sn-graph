@@ -141,6 +141,8 @@ export class SimplifiedApiService {
     if (filters.sales_regions?.length) filterRequest.sales_regions = filters.sales_regions;
     if (filters.ratings?.length) filterRequest.ratings = filters.ratings;
     if (filters.influenceLevels?.length) filterRequest.influenceLevels = filters.influenceLevels;
+    if (filters.mandateManagers?.length) filterRequest.mandateManagers = filters.mandateManagers;
+    if (filters.universeNames?.length) filterRequest.universeNames = filters.universeNames;
    
     console.log('Sending clean filter request:', filterRequest);
 
@@ -311,6 +313,8 @@ export class SimplifiedApiService {
     if (recommendationsMode) {
       base.incumbent_products = [];
       base.consultant_advisors = [];
+      base.mandate_managers = [];
+      base.universe_names = [];
     }
 
     return base;

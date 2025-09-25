@@ -137,7 +137,9 @@ export class SmartQueriesService {
       'mandateStatuses': 'relationship.mandate_status',
       'influenceLevels': 'relationship.level_of_influence',
       'ratings': 'rating.rankgroup',
-      'regions': 'region'
+      'regions': 'region',
+      'mandateManagers': 'relationship.manager',           // ADD THIS LINE
+      'universeNames': 'product.universe_name' 
     };
 
     const renamedFilters: Record<string, any> = {};
@@ -330,7 +332,9 @@ export class SmartQueriesService {
       'relationship.mandate_status': 'mandateStatuses',
       'relationship.level_of_influence': 'influenceLevels',
       'rating.rankgroup': 'ratings',
-      'region': 'regions'
+      'region': 'regions',
+      'relationship.manager': 'mandateManagers',         // ADD THIS LINE
+      'product.universe_name': 'universeNames'
     };
   
     return reverseKeyMap[dotNotationKey] || dotNotationKey;
