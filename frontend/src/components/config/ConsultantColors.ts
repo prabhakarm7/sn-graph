@@ -202,12 +202,12 @@ export const ENTITY_COLORS = {
     description: 'Energetic field consultant coral'
   },
   fieldConsultant: {
-    name: 'Field Consultant Sky',
-    primary: '#0891b2',      // Bright cyan for field consultants
-    secondary: '#0e7490',
-    light: 'rgba(8, 145, 178, 0.12)',
+    name: 'Field Consultant Cyan',
+    primary: '#06b6d4',      // Bright cyan for field consultants
+    secondary: '#0891b2',
+    light: 'rgba(6, 182, 212, 0.12)',
     text: '#ffffff',
-    description: 'Active field consultant cyan'
+    description: 'Vibrant field consultant cyan'
   },
   company: {
     name: 'Corporate Green',
