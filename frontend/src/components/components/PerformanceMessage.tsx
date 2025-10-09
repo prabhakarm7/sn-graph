@@ -81,7 +81,7 @@ export const PerformanceMessage: React.FC<PerformanceMessageProps> = ({
   const getStateTitle = () => {
     switch (performanceState.mode) {
       case 'filters_only':
-        return 'Ready to Filter';
+        return 'Welcome To Smart Network!';
       case 'too_many_nodes':
         return 'Dataset Too Large';
       case 'graph_ready':

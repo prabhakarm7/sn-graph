@@ -9,6 +9,7 @@ import JPMGraphPreviewEx from './components/JPMGraphPreviewEx';
 import JPMGraphPreviewWithFilters from './components/JPMGraphPreviewWithFilters';
 import JPMGraphComplete from './components/JPMGraphComplete';
 import JPMGraphPerformanceOptimized from './components/JPMGraphPerformanceOptimized';
+import ClientAdvisorFlowDiagram from './components/TechnicalArchitecture';
 
 
 function App() {
