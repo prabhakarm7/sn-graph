@@ -2660,16 +2660,31 @@ class CompleteBackendFilterService:
         """
         Post-process product nodes to identify main consultant from OWNS relationships.
         This is much more reliable than complex Cypher nested queries.
+        UPDATED: Handles consultant as a list instead of a single string.
         """
-        # Create mapping of product_id -> owns_consultant
+        # Create mapping of product_id -> list of owns_consultants
         owns_consultant_map = {}
         
         for relationship in relationships:
             rel_data = relationship.get('data', {})
-            if (rel_data.get('relType') == 'OWNS' and 
-                rel_data.get('consultant') and 
-                relationship.get('target')):
-                owns_consultant_map[relationship['target']] = rel_data['consultant']
+            if rel_data.get('relType') == 'OWNS' and relationship.get('target'):
+                consultants = rel_data.get('consultant')
+                
+                # Handle both list and string formats for backward compatibility
+                if consultants:
+                    if isinstance(consultants, list):
+                        consultant_list = consultants
+                    else:
+                        consultant_list = [consultants]
+                    
+                    # Store all consultants for this product
+                    if relationship['target'] not in owns_consultant_map:
+                        owns_consultant_map[relationship['target']] = []
+                    owns_consultant_map[relationship['target']].extend(consultant_list)
+        
+        # Remove duplicates from consultant lists
+        for product_id in owns_consultant_map:
+            owns_consultant_map[product_id] = list(set(owns_consultant_map[product_id]))
         
         print(f"Found OWNS consultants for {len(owns_consultant_map)} products: {owns_consultant_map}")
         
@@ -2682,19 +2697,22 @@ class CompleteBackendFilterService:
             if (node.get('type') in ['PRODUCT', 'INCUMBENT_PRODUCT'] and 
                 node_data.get('ratings')):
                 
-                owns_consultant = owns_consultant_map.get(node['id'])
-                node_data['owns_consultant'] = owns_consultant
+                owns_consultants = owns_consultant_map.get(node['id'], [])
+                node_data['owns_consultants'] = owns_consultants  # Changed to plural
                 
                 # Enhance ratings with is_main_consultant flag
                 enhanced_ratings = []
                 for rating in node_data['ratings']:
                     enhanced_rating = dict(rating)  # Copy the rating
+                    
+                    # Check if this rating consultant is in the OWNS consultants list
+                    rating_consultant_id = rating.get('consultant_id')
                     enhanced_rating['is_main_consultant'] = (
-                        owns_consultant and rating.get('consultant_id') == owns_consultant
+                        rating_consultant_id in owns_consultants if rating_consultant_id else False
                     )
                     enhanced_ratings.append(enhanced_rating)
                 
-                # Sort ratings: main consultant first, then alphabetically
+                # Sort ratings: main consultants first, then alphabetically
                 enhanced_ratings.sort(key=lambda r: (
                     not r.get('is_main_consultant', False),  # False sorts before True, so main consultant first
                     r.get('consultant', '')  # Then alphabetical
@@ -2703,7 +2721,7 @@ class CompleteBackendFilterService:
                 node_data['ratings'] = enhanced_ratings
                 
                 main_consultant_count = sum(1 for r in enhanced_ratings if r.get('is_main_consultant'))
-                print(f"Enhanced product {node['id']}: owns_consultant={owns_consultant}, "
+                print(f"Enhanced product {node['id']}: owns_consultants={owns_consultants}, "
                     f"main_consultant_ratings={main_consultant_count}, total_ratings={len(enhanced_ratings)}")
             
             enhanced_nodes.append(node)

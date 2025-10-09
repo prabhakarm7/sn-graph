@@ -193,11 +193,28 @@ export const APP_THEME_COLORS = {
 
 // 🏢 FIXED ENTITY COLORS (separate from consultants)
 export const ENTITY_COLORS = {
+  consultant: {
+    name: 'Consultant Purple',
+    primary: '#6366f1',      // Indigo/purple for consultants
+    secondary: '#4f46e5',
+    light: 'rgba(99, 102, 241, 0.12)',
+    text: '#ffffff',         // White text for visibility
+    description: 'Professional consultant indigo'
+  },
+  fieldConsultant: {
+    name: 'Field Consultant Violet',
+    primary: '#8b5cf6',      // Lighter violet for field consultants
+    secondary: '#7c3aed',
+    light: 'rgba(139, 92, 246, 0.12)',
+    text: '#ffffff',         // White text for visibility
+    description: 'Distinctive field consultant violet'
+  },
   company: {
     name: 'Corporate Green',
     primary: '#059669',      // Emerald green for companies
     secondary: '#047857',
     light: 'rgba(5, 150, 105, 0.12)',
+    text: '#ffffff',         // White text for visibility
     description: 'Professional corporate green'
   },
   product: {
@@ -205,7 +222,16 @@ export const ENTITY_COLORS = {
     primary: '#0ea5e9',      // Sky blue for products  
     secondary: '#0284c7',
     light: 'rgba(14, 165, 233, 0.12)',
+    text: '#ffffff',         // White text for visibility
     description: 'Clear product identification blue'
+  },
+  incumbentProduct: {
+    name: 'Incumbent Amber',
+    primary: '#f59e0b',      // Amber/orange for incumbent products
+    secondary: '#d97706',
+    light: 'rgba(245, 158, 11, 0.12)',
+    text: '#ffffff',         // White text for visibility
+    description: 'Warm incumbent product amber'
   }
 };
 
