@@ -373,6 +373,7 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
 
 // 🏦 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator)
 // 🦈 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator and associated consultant)
+// 🦈 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator and associated consultant)
 export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -385,24 +386,19 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
     rg === 'Introduced' ? STATUS_COLORS.neutral : 
     rg === 'Neutral' ? STATUS_COLORS.neutral : STATUS_COLORS.neutral;
 
-  // NEW: Check if there's a consultant in OWNS relationship
-  const hasConsultantInfluence = data.consultant_from_owns || data.owns_consultant || data.owns_consultants;
-  
-  // Get the associated consultant(s) - handle both string and array
+  // Get the associated consultant(s) from consultant_name (which is a list)
   const getAssociatedConsultants = () => {
-    if (data.owns_consultants && Array.isArray(data.owns_consultants)) {
-      return data.owns_consultants;
-    }
-    if (data.owns_consultant) {
-      return Array.isArray(data.owns_consultant) ? data.owns_consultant : [data.owns_consultant];
-    }
-    if (data.consultant_from_owns) {
-      return Array.isArray(data.consultant_from_owns) ? data.consultant_from_owns : [data.consultant_from_owns];
+    if (data.consultant_name) {
+      // consultant_name is already a list/array
+      return Array.isArray(data.consultant_name) ? data.consultant_name : [data.consultant_name];
     }
     return [];
   };
   
   const associatedConsultants = getAssociatedConsultants();
+  
+  // NEW: Check if there's a consultant influence
+  const hasConsultantInfluence = associatedConsultants.length > 0;
   
   // Determine product icon based on asset class
   const getProductIcon = () => {
@@ -527,7 +523,7 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
 
       <Divider sx={{ my: 1.5, borderColor: `${colors.primary}30` }} />
       
-      {/* NEW: Associated Consultant(s) Section */}
+      {/* NEW: Associated Consultant(s) Section - using consultant_name */}
       {associatedConsultants.length > 0 && (
         <Box sx={{ mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.8 }}>
