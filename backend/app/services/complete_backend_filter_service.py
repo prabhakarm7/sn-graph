@@ -2661,10 +2661,27 @@ class CompleteBackendFilterService:
         Post-process product nodes to identify main consultant from OWNS relationships.
         This is much more reliable than complex Cypher nested queries.
         UPDATED: Handles consultant as a list instead of a single string.
+        UPDATED: Adds both owns_consultant (ID) and owns_consultant_name (name) mappings.
         """
-        # Create mapping of product_id -> list of owns_consultants
+        # Create mapping of product_id -> list of owns_consultants (IDs)
         owns_consultant_map = {}
+        # Create mapping of product_id -> list of owns_consultant_names (names)
+        owns_consultant_name_map = {}
+        # Create mapping of consultant_id -> consultant_name for lookup
+        consultant_id_to_name = {}
         
+        # First pass: Build consultant ID to name mapping
+        for node in nodes:
+            if node.get('type') == 'CONSULTANT':
+                node_data = node.get('data', {})
+                consultant_id = node_data.get('id')
+                consultant_name = node_data.get('name')
+                if consultant_id and consultant_name:
+                    consultant_id_to_name[consultant_id] = consultant_name
+        
+        print(f"Built consultant ID->Name mapping with {len(consultant_id_to_name)} entries")
+        
+        # Second pass: Extract consultant IDs from OWNS relationships
         for relationship in relationships:
             rel_data = relationship.get('data', {})
             if rel_data.get('relType') == 'OWNS' and relationship.get('target'):
@@ -2677,16 +2694,31 @@ class CompleteBackendFilterService:
                     else:
                         consultant_list = [consultants]
                     
-                    # Store all consultants for this product
-                    if relationship['target'] not in owns_consultant_map:
-                        owns_consultant_map[relationship['target']] = []
-                    owns_consultant_map[relationship['target']].extend(consultant_list)
+                    product_id = relationship['target']
+                    
+                    # Store consultant IDs
+                    if product_id not in owns_consultant_map:
+                        owns_consultant_map[product_id] = []
+                    owns_consultant_map[product_id].extend(consultant_list)
+                    
+                    # Map IDs to names and store
+                    if product_id not in owns_consultant_name_map:
+                        owns_consultant_name_map[product_id] = []
+                    
+                    for consultant_id in consultant_list:
+                        consultant_name = consultant_id_to_name.get(consultant_id, consultant_id)
+                        owns_consultant_name_map[product_id].append(consultant_name)
         
-        # Remove duplicates from consultant lists
+        # Remove duplicates from both consultant ID and name lists
         for product_id in owns_consultant_map:
             owns_consultant_map[product_id] = list(set(owns_consultant_map[product_id]))
         
-        print(f"Found OWNS consultants for {len(owns_consultant_map)} products: {owns_consultant_map}")
+        for product_id in owns_consultant_name_map:
+            owns_consultant_name_map[product_id] = list(set(owns_consultant_name_map[product_id]))
+        
+        print(f"Found OWNS consultants for {len(owns_consultant_map)} products")
+        print(f"Sample owns_consultant IDs: {dict(list(owns_consultant_map.items())[:3])}")
+        print(f"Sample owns_consultant names: {dict(list(owns_consultant_name_map.items())[:3])}")
         
         # Enhance product nodes
         enhanced_nodes = []
@@ -2698,7 +2730,11 @@ class CompleteBackendFilterService:
                 node_data.get('ratings')):
                 
                 owns_consultants = owns_consultant_map.get(node['id'], [])
-                node_data['owns_consultants'] = owns_consultants  # Changed to plural
+                owns_consultant_names = owns_consultant_name_map.get(node['id'], [])
+                
+                # Add both IDs and names to node data
+                node_data['owns_consultants'] = owns_consultants  # List of consultant IDs
+                node_data['consultant_name'] = owns_consultant_names  # List of consultant names (for frontend)
                 
                 # Enhance ratings with is_main_consultant flag
                 enhanced_ratings = []
@@ -2721,8 +2757,11 @@ class CompleteBackendFilterService:
                 node_data['ratings'] = enhanced_ratings
                 
                 main_consultant_count = sum(1 for r in enhanced_ratings if r.get('is_main_consultant'))
-                print(f"Enhanced product {node['id']}: owns_consultants={owns_consultants}, "
-                    f"main_consultant_ratings={main_consultant_count}, total_ratings={len(enhanced_ratings)}")
+                print(f"Enhanced product {node['id']}: "
+                    f"owns_consultants={owns_consultants}, "
+                    f"consultant_names={owns_consultant_names}, "
+                    f"main_consultant_ratings={main_consultant_count}, "
+                    f"total_ratings={len(enhanced_ratings)}")
             
             enhanced_nodes.append(node)
         
