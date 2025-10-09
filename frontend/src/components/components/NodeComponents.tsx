@@ -99,7 +99,9 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
   const [isHovered, setIsHovered] = useState(false);
   
   // Get color from curated palette (imported from config)
-  const colors = getConsultantColorById(data.id);
+  // const colors = getConsultantColorById(data.id);
+  const colors = ENTITY_COLORS.consultant;
+
   
   return (
     <div 
@@ -159,7 +161,8 @@ export const FieldConsultantNode = React.memo(function FieldConsultantNode({ dat
   
   // Get parent consultant's color (inherits from parent)
   const parentConsultantId = findParentConsultant(data);
-  const colors = getConsultantColorById(parentConsultantId);
+  // const colors = getConsultantColorById(parentConsultantId);
+  const colors = ENTITY_COLORS.fieldConsultant;
   
   return (
     <div 
@@ -173,7 +176,7 @@ export const FieldConsultantNode = React.memo(function FieldConsultantNode({ dat
         boxShadow: isHovered ? `0 8px 32px ${colors.primary}66` : `0 4px 16px ${colors.primary}33`,
         transform: isHovered ? 'scale(1.05)' : 'scale(1)',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        border: `2px dashed ${colors.primary}`, // Dashed border to show it's a subordinate
+        border: `2px solid ${colors.primary}`, // Dashed border to show it's a subordinate
         backdropFilter: 'blur(10px)',
       }}
       onMouseEnter={() => setIsHovered(true)}
@@ -369,6 +372,7 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
 });
 
 // 🏦 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator)
+// 🦈 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator and associated consultant)
 export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -382,7 +386,23 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
     rg === 'Neutral' ? STATUS_COLORS.neutral : STATUS_COLORS.neutral;
 
   // NEW: Check if there's a consultant in OWNS relationship
-  const hasConsultantInfluence = data.consultant_from_owns || data.owns_consultant;
+  const hasConsultantInfluence = data.consultant_from_owns || data.owns_consultant || data.owns_consultants;
+  
+  // Get the associated consultant(s) - handle both string and array
+  const getAssociatedConsultants = () => {
+    if (data.owns_consultants && Array.isArray(data.owns_consultants)) {
+      return data.owns_consultants;
+    }
+    if (data.owns_consultant) {
+      return Array.isArray(data.owns_consultant) ? data.owns_consultant : [data.owns_consultant];
+    }
+    if (data.consultant_from_owns) {
+      return Array.isArray(data.consultant_from_owns) ? data.consultant_from_owns : [data.consultant_from_owns];
+    }
+    return [];
+  };
+  
+  const associatedConsultants = getAssociatedConsultants();
   
   // Determine product icon based on asset class
   const getProductIcon = () => {
@@ -474,7 +494,6 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
         {data.name}
       </Typography>
 
-
       {/* Show universe properties if available */}
       {(data.universe_name || data.universe_score) && (
         <Box sx={{ mb: 1 }}>
@@ -508,6 +527,51 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
 
       <Divider sx={{ my: 1.5, borderColor: `${colors.primary}30` }} />
       
+      {/* NEW: Associated Consultant(s) Section */}
+      {associatedConsultants.length > 0 && (
+        <Box sx={{ mb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.8 }}>
+            <Star sx={{ fontSize: '0.9rem', color: '#ffd700' }} />
+            <Typography variant="caption" sx={{ 
+              color: '#ffd700', 
+              fontWeight: 'bold',
+              fontSize: '0.75rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.3px'
+            }}>
+              Associated Consultant{associatedConsultants.length > 1 ? 's' : ''}
+            </Typography>
+          </Box>
+          <Stack direction="column" spacing={0.5}>
+            {associatedConsultants.map((consultant, idx) => (
+              <Box
+                key={idx}
+                sx={{
+                  p: 0.8,
+                  borderRadius: 1.5,
+                  background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(255, 193, 7, 0.1) 100%)',
+                  border: '1px solid rgba(255, 215, 0, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.5
+                }}
+              >
+                <BusinessCenter sx={{ fontSize: '0.8rem', color: '#ffd700' }} />
+                <Typography variant="caption" sx={{ 
+                  fontSize: '0.7rem', 
+                  color: '#ffd700',
+                  fontWeight: 'medium'
+                }}>
+                  {consultant}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+          <Divider sx={{ my: 1.5, borderColor: `${colors.primary}30` }} />
+        </Box>
+      )}
+      
       <Box sx={{ fontSize: 11 }}>
         {data.ratings?.length ? (
           <Stack direction="column" spacing={0.5} sx={{ alignItems: 'stretch' }}>
@@ -522,11 +586,11 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
               </Typography>
               {/* Show total count with main consultant indicator */}
               <Chip 
-                label={`${data.ratings.length}${data.owns_consultant ? ' +★' : ''}`}
+                label={`${data.ratings.length}${associatedConsultants.length > 0 ? ' +★' : ''}`}
                 size="small"
                 sx={{
-                  bgcolor: data.owns_consultant ? '#ffd70020' : `${colors.primary}20`,
-                  color: data.owns_consultant ? '#ffd700' : colors.primary,
+                  bgcolor: associatedConsultants.length > 0 ? '#ffd70020' : `${colors.primary}20`,
+                  color: associatedConsultants.length > 0 ? '#ffd700' : colors.primary,
                   fontSize: '0.6rem',
                   height: 16,
                   fontWeight: 'bold'

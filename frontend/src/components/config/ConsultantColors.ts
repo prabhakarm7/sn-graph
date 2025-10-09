@@ -194,20 +194,20 @@ export const APP_THEME_COLORS = {
 // 🏢 FIXED ENTITY COLORS (separate from consultants)
 export const ENTITY_COLORS = {
   consultant: {
-    name: 'Consultant Purple',
-    primary: '#6366f1',      // Indigo/purple for consultants
-    secondary: '#4f46e5',
-    light: 'rgba(99, 102, 241, 0.12)',
-    text: '#ffffff',         // White text for visibility
-    description: 'Professional consultant indigo'
+    name: 'Consultant Coral',
+    primary: '#f97316',      // Warm coral for field consultants
+    secondary: '#ea580c',
+    light: 'rgba(249, 115, 22, 0.12)',
+    text: '#ffffff',
+    description: 'Energetic field consultant coral'
   },
   fieldConsultant: {
-    name: 'Field Consultant Violet',
-    primary: '#8b5cf6',      // Lighter violet for field consultants
-    secondary: '#7c3aed',
-    light: 'rgba(139, 92, 246, 0.12)',
-    text: '#ffffff',         // White text for visibility
-    description: 'Distinctive field consultant violet'
+    name: 'Field Consultant Sky',
+    primary: '#0891b2',      // Bright cyan for field consultants
+    secondary: '#0e7490',
+    light: 'rgba(8, 145, 178, 0.12)',
+    text: '#ffffff',
+    description: 'Active field consultant cyan'
   },
   company: {
     name: 'Corporate Green',
