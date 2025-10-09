@@ -2736,6 +2736,7 @@ class CompleteBackendFilterService:
                 node_data['owns_consultants'] = owns_consultants  # List of consultant IDs
                 node_data['consultant_name'] = owns_consultant_names  # List of consultant names (for frontend)
                 
+                
                 # Enhance ratings with is_main_consultant flag
                 enhanced_ratings = []
                 for rating in node_data['ratings']:
