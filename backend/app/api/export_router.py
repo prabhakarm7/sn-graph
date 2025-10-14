@@ -117,10 +117,55 @@ def flatten_graph_to_table(
     """
     Flatten graph structure into table rows.
     Each row = one complete relationship path.
+    FIXED: Properly handles multiple consultants per company.
     """
     
     # Create lookup maps for fast access
     nodes_by_id = {node['id']: node for node in nodes}
+    
+    # Pre-build consultant coverage map: company_id -> list of (consultant, field_consultant, cover_rel)
+    company_coverage_map = {}
+    
+    for rel in relationships:
+        if rel.get('data', {}).get('relType') == 'COVERS':
+            company_id = rel['target']
+            covering_entity = nodes_by_id.get(rel['source'])
+            
+            if not covering_entity:
+                continue
+            
+            if company_id not in company_coverage_map:
+                company_coverage_map[company_id] = []
+            
+            if covering_entity.get('type') == 'FIELD_CONSULTANT':
+                # Find parent consultant
+                field_consultant = covering_entity
+                parent_consultant = None
+                
+                for emp_r in relationships:
+                    if (emp_r.get('data', {}).get('relType') == 'EMPLOYS' and 
+                        emp_r['target'] == field_consultant['id']):
+                        parent_consultant = nodes_by_id.get(emp_r['source'])
+                        break
+                
+                company_coverage_map[company_id].append({
+                    'consultant': parent_consultant,
+                    'field_consultant': field_consultant,
+                    'cover_rel': rel,
+                    'path_type': 'FC_PATH'
+                })
+                
+            elif covering_entity.get('type') == 'CONSULTANT':
+                company_coverage_map[company_id].append({
+                    'consultant': covering_entity,
+                    'field_consultant': None,
+                    'cover_rel': rel,
+                    'path_type': 'DIRECT_PATH'
+                })
+    
+    print(f"Built coverage map for {len(company_coverage_map)} companies")
+    for company_id, coverages in list(company_coverage_map.items())[:3]:
+        print(f"  Company {company_id}: {len(coverages)} coverage(s)")
     
     table_rows = []
     
@@ -148,65 +193,81 @@ def flatten_graph_to_table(
             if not company:
                 continue
             
-            # Find consultant coverage
-            consultant = None
-            field_consultant = None
-            cover_rel = None
+            # Get all consultant coverages for this company
+            coverages = company_coverage_map.get(company['id'], [])
             
-            for r in relationships:
-                if r.get('data', {}).get('relType') == 'COVERS' and r['target'] == company['id']:
-                    fc_or_cons = nodes_by_id.get(r['source'])
-                    cover_rel = r
-                    
-                    if fc_or_cons.get('type') == 'FIELD_CONSULTANT':
-                        field_consultant = fc_or_cons
-                        # Find parent consultant
-                        for emp_r in relationships:
-                            if emp_r.get('data', {}).get('relType') == 'EMPLOYS' and emp_r['target'] == field_consultant['id']:
-                                consultant = nodes_by_id.get(emp_r['source'])
-                                break
-                    elif fc_or_cons.get('type') == 'CONSULTANT':
-                        consultant = fc_or_cons
-                    break
+            if not coverages:
+                # No consultant coverage - create row without consultant info
+                row = {
+                    'Consultant': 'N/A',
+                    'Consultant Advisor': 'N/A',
+                    'Field Consultant': 'N/A',
+                    'Company': company.get('data', {}).get('name', 'N/A'),
+                    'Company Channel': company.get('data', {}).get('channel', 'N/A'),
+                    'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
+                    'Incumbent Product': incumbent.get('data', {}).get('name', 'N/A'),
+                    'Incumbent Manager': owns_rel.get('data', {}).get('manager', 'N/A') if owns_rel else 'N/A',
+                    'Incumbent Mandate Status': owns_rel.get('data', {}).get('mandate_status', 'N/A') if owns_rel else 'N/A',
+                    'Incumbent Commitment Value': owns_rel.get('data', {}).get('commitment_market_value', 'N/A') if owns_rel else 'N/A',
+                    'Recommended Product': recommended.get('data', {}).get('name', 'N/A'),
+                    'Recommended Asset Class': recommended.get('data', {}).get('asset_class', 'N/A'),
+                    'Recommended Universe': recommended.get('data', {}).get('universe_name', 'N/A'),
+                    'Opportunity Type': rel.get('data', {}).get('opportunity_type', 'N/A'),
+                    'BI Returns Summary': rel.get('data', {}).get('returns_summary', 'N/A'),
+                    'BI Alpha Summary': rel.get('data', {}).get('annualised_alpha_summary', 'N/A'),
+                    'BI Batting Average': rel.get('data', {}).get('batting_average_summary', 'N/A'),
+                    'BI Information Ratio': rel.get('data', {}).get('information_ratio_summary', 'N/A'),
+                    'Consultant Rating': 'N/A',
+                    'Consultant Influence Level': 'N/A'
+                }
+                table_rows.append(row)
+                continue
             
-            # Find consultant rating on recommended product
-            rating = None
-            if consultant:
-                for r in relationships:
-                    if (r.get('data', {}).get('relType') == 'RATES' and 
-                        r['source'] == consultant['id'] and 
-                        r['target'] == recommended_id):
-                        rating = r.get('data', {}).get('rankgroup')
-                        break
-            
-            # Build recommendation row
-            row = {
-                'Consultant': consultant.get('data', {}).get('name', 'N/A') if consultant else 'N/A',
-                'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
-                'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
-                'Company': company.get('data', {}).get('name', 'N/A'),
-                'Company Channel': company.get('data', {}).get('channel', 'N/A'),
-                'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
-                'Incumbent Product': incumbent.get('data', {}).get('name', 'N/A'),
-                'Incumbent Manager': owns_rel.get('data', {}).get('manager', 'N/A') if owns_rel else 'N/A',
-                'Incumbent Mandate Status': owns_rel.get('data', {}).get('mandate_status', 'N/A') if owns_rel else 'N/A',
-                'Incumbent Commitment Value': owns_rel.get('data', {}).get('commitment_market_value', 'N/A') if owns_rel else 'N/A',
-                'Recommended Product': recommended.get('data', {}).get('name', 'N/A'),
-                'Recommended Asset Class': recommended.get('data', {}).get('asset_class', 'N/A'),
-                'Recommended Universe': recommended.get('data', {}).get('universe_name', 'N/A'),
-                'Opportunity Type': rel.get('data', {}).get('opportunity_type', 'N/A'),
-                'BI Returns Summary': rel.get('data', {}).get('returns_summary', 'N/A'),
-                'BI Alpha Summary': rel.get('data', {}).get('annualised_alpha_summary', 'N/A'),
-                'BI Batting Average': rel.get('data', {}).get('batting_average_summary', 'N/A'),
-                'BI Information Ratio': rel.get('data', {}).get('information_ratio_summary', 'N/A'),
-                'Consultant Rating': rating or 'N/A',
-                'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A'
-            }
-            
-            table_rows.append(row)
+            # Create one row for EACH consultant coverage
+            for coverage in coverages:
+                consultant = coverage['consultant']
+                field_consultant = coverage['field_consultant']
+                cover_rel = coverage['cover_rel']
+                
+                # Find consultant rating on recommended product (only for matching consultant)
+                rating = None
+                if consultant:
+                    for r in relationships:
+                        if (r.get('data', {}).get('relType') == 'RATES' and 
+                            r['source'] == consultant['id'] and 
+                            r['target'] == recommended_id):
+                            rating = r.get('data', {}).get('rankgroup')
+                            break
+                
+                # Build recommendation row
+                row = {
+                    'Consultant': consultant.get('data', {}).get('name', 'N/A') if consultant else 'N/A',
+                    'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
+                    'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
+                    'Company': company.get('data', {}).get('name', 'N/A'),
+                    'Company Channel': company.get('data', {}).get('channel', 'N/A'),
+                    'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
+                    'Incumbent Product': incumbent.get('data', {}).get('name', 'N/A'),
+                    'Incumbent Manager': owns_rel.get('data', {}).get('manager', 'N/A') if owns_rel else 'N/A',
+                    'Incumbent Mandate Status': owns_rel.get('data', {}).get('mandate_status', 'N/A') if owns_rel else 'N/A',
+                    'Incumbent Commitment Value': owns_rel.get('data', {}).get('commitment_market_value', 'N/A') if owns_rel else 'N/A',
+                    'Recommended Product': recommended.get('data', {}).get('name', 'N/A'),
+                    'Recommended Asset Class': recommended.get('data', {}).get('asset_class', 'N/A'),
+                    'Recommended Universe': recommended.get('data', {}).get('universe_name', 'N/A'),
+                    'Opportunity Type': rel.get('data', {}).get('opportunity_type', 'N/A'),
+                    'BI Returns Summary': rel.get('data', {}).get('returns_summary', 'N/A'),
+                    'BI Alpha Summary': rel.get('data', {}).get('annualised_alpha_summary', 'N/A'),
+                    'BI Batting Average': rel.get('data', {}).get('batting_average_summary', 'N/A'),
+                    'BI Information Ratio': rel.get('data', {}).get('information_ratio_summary', 'N/A'),
+                    'Consultant Rating': rating or 'N/A',
+                    'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A',
+                    'Coverage Path Type': coverage['path_type']  # For debugging
+                }
+                
+                table_rows.append(row)
     
     else:
-        # Process OWNS relationships (standard mode)
+        # Process OWNS relationships (standard mode) - SAME LOGIC APPLIED
         for rel in relationships:
             if rel.get('data', {}).get('relType') != 'OWNS':
                 continue
@@ -217,60 +278,74 @@ def flatten_graph_to_table(
             company = nodes_by_id.get(company_id, {})
             product = nodes_by_id.get(product_id, {})
             
-            # Find consultant coverage
-            consultant = None
-            field_consultant = None
-            cover_rel = None
+            # Get all consultant coverages for this company
+            coverages = company_coverage_map.get(company_id, [])
             
-            for r in relationships:
-                if r.get('data', {}).get('relType') == 'COVERS' and r['target'] == company_id:
-                    fc_or_cons = nodes_by_id.get(r['source'])
-                    cover_rel = r
-                    
-                    if fc_or_cons.get('type') == 'FIELD_CONSULTANT':
-                        field_consultant = fc_or_cons
-                        # Find parent consultant
-                        for emp_r in relationships:
-                            if emp_r.get('data', {}).get('relType') == 'EMPLOYS' and emp_r['target'] == field_consultant['id']:
-                                consultant = nodes_by_id.get(emp_r['source'])
-                                break
-                    elif fc_or_cons.get('type') == 'CONSULTANT':
-                        consultant = fc_or_cons
-                    break
+            if not coverages:
+                # No consultant coverage - create row without consultant info
+                row = {
+                    'Consultant': 'N/A',
+                    'Consultant Advisor': 'N/A',
+                    'Consultant Region': 'N/A',
+                    'Field Consultant': 'N/A',
+                    'Company': company.get('data', {}).get('name', 'N/A'),
+                    'Company Channel': company.get('data', {}).get('channel', 'N/A'),
+                    'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
+                    'Company Advisor': company.get('data', {}).get('pca', 'N/A'),
+                    'Product': product.get('data', {}).get('name', 'N/A'),
+                    'Product Asset Class': product.get('data', {}).get('asset_class', 'N/A'),
+                    'Product Universe': product.get('data', {}).get('universe_name', 'N/A'),
+                    'Consultant Influence Level': 'N/A',
+                    'Consultant Rating': 'N/A',
+                    'Mandate Status': rel.get('data', {}).get('mandate_status', 'N/A'),
+                    'Commitment Value': rel.get('data', {}).get('commitment_market_value', 'N/A'),
+                    'Mandate Manager': rel.get('data', {}).get('manager', 'N/A'),
+                    'Manager Since Date': rel.get('data', {}).get('manager_since_date', 'N/A')
+                }
+                table_rows.append(row)
+                continue
             
-            # Find consultant rating
-            rating = None
-            if consultant:
-                for r in relationships:
-                    if (r.get('data', {}).get('relType') == 'RATES' and 
-                        r['source'] == consultant['id'] and 
-                        r['target'] == product_id):
-                        rating = r.get('data', {}).get('rankgroup')
-                        break
-            
-            # Build standard row
-            row = {
-                'Consultant': consultant.get('data', {}).get('name', 'N/A') if consultant else 'N/A',
-                'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
-                'Consultant Region': consultant.get('data', {}).get('region', 'N/A') if consultant else 'N/A',
-                'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
-                'Company': company.get('data', {}).get('name', 'N/A'),
-                'Company Channel': company.get('data', {}).get('channel', 'N/A'),
-                'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
-                'Company Advisor': company.get('data', {}).get('pca', 'N/A'),
-                'Product': product.get('data', {}).get('name', 'N/A'),
-                'Product Asset Class': product.get('data', {}).get('asset_class', 'N/A'),
-                'Product Universe': product.get('data', {}).get('universe_name', 'N/A'),
-                'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A',
-                'Consultant Rating': rating or 'N/A',
-                'Mandate Status': rel.get('data', {}).get('mandate_status', 'N/A'),
-                'Commitment Value': rel.get('data', {}).get('commitment_market_value', 'N/A'),
-                'Mandate Manager': rel.get('data', {}).get('manager', 'N/A'),
-                'Manager Since Date': rel.get('data', {}).get('manager_since_date', 'N/A')
-            }
-            
-            table_rows.append(row)
+            # Create one row for EACH consultant coverage
+            for coverage in coverages:
+                consultant = coverage['consultant']
+                field_consultant = coverage['field_consultant']
+                cover_rel = coverage['cover_rel']
+                
+                # Find consultant rating (only for matching consultant)
+                rating = None
+                if consultant:
+                    for r in relationships:
+                        if (r.get('data', {}).get('relType') == 'RATES' and 
+                            r['source'] == consultant['id'] and 
+                            r['target'] == product_id):
+                            rating = r.get('data', {}).get('rankgroup')
+                            break
+                
+                # Build standard row
+                row = {
+                    'Consultant': consultant.get('data', {}).get('name', 'N/A') if consultant else 'N/A',
+                    'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
+                    'Consultant Region': consultant.get('data', {}).get('region', 'N/A') if consultant else 'N/A',
+                    'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
+                    'Company': company.get('data', {}).get('name', 'N/A'),
+                    'Company Channel': company.get('data', {}).get('channel', 'N/A'),
+                    'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
+                    'Company Advisor': company.get('data', {}).get('pca', 'N/A'),
+                    'Product': product.get('data', {}).get('name', 'N/A'),
+                    'Product Asset Class': product.get('data', {}).get('asset_class', 'N/A'),
+                    'Product Universe': product.get('data', {}).get('universe_name', 'N/A'),
+                    'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A',
+                    'Consultant Rating': rating or 'N/A',
+                    'Mandate Status': rel.get('data', {}).get('mandate_status', 'N/A'),
+                    'Commitment Value': rel.get('data', {}).get('commitment_market_value', 'N/A'),
+                    'Mandate Manager': rel.get('data', {}).get('manager', 'N/A'),
+                    'Manager Since Date': rel.get('data', {}).get('manager_since_date', 'N/A'),
+                    'Coverage Path Type': coverage['path_type']  # For debugging
+                }
+                
+                table_rows.append(row)
     
+    print(f"Created {len(table_rows)} export rows from {len(nodes)} nodes and {len(relationships)} relationships")
     return table_rows
 
 
