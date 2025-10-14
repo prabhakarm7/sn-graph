@@ -413,6 +413,7 @@ function PerformanceOptimizedGraphComponent() {
             setRecommendationsMode={setRecommendationsMode}
             onModeChange={handleRecommendationsModeChange}
             currentRegions={currentRegions}
+            currentFilters={currentFilters} // ← Pass current filters
             nodeCount={nodeCount}
             edgeCount={edgeCount}
             dataSource={`${dataSource} (${performanceState.mode})`}

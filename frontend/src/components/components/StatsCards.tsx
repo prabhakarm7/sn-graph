@@ -1,6 +1,21 @@
-// components/StatsCards.tsx - Fixed with proper recommendations mode handling
+// components/StatsCards.tsx - Complete implementation with export feature
 import React, { useState } from 'react';
-import { Box, Typography, Switch, FormControlLabel, IconButton, Tooltip, Chip } from '@mui/material';
+import { 
+  Box, 
+  Typography, 
+  Switch, 
+  FormControlLabel, 
+  IconButton, 
+  Tooltip, 
+  Chip,
+  CircularProgress,
+  Snackbar,
+  Alert,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText
+} from '@mui/material';
 import { 
   Hub, 
   Psychology, 
@@ -8,10 +23,16 @@ import {
   DarkMode, 
   LightMode,
   TrendingUp,
-  Recommend
+  Recommend,
+  Download,
+  FileDownload,
+  TableChart,
+  CheckCircle
 } from '@mui/icons-material';
 import { Node, Edge } from 'reactflow';
 import { AppNodeData, EdgeData } from '../types/GraphTypes';
+import { useExport } from '../hooks/useExport';
+import { exportService } from '../services/ExportService';
 
 interface StatsCardsProps {
   nodes: Node<AppNodeData>[];
@@ -26,6 +47,7 @@ interface StatsCardsProps {
   onModeChange?: (mode: 'standard' | 'recommendations') => void;
   // NEW: Region and data info
   currentRegions?: string[];
+  currentFilters?: any;
   nodeCount?: number;
   edgeCount?: number;
   dataSource?: string;
@@ -44,6 +66,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   onModeChange = () => {},
   // NEW: Region and data info
   currentRegions = ['NAI'],
+  currentFilters = {},
   nodeCount = 0,
   edgeCount = 0,
   dataSource = 'hierarchical_standard'
@@ -53,6 +76,26 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   const biRecommendsCount = edges.filter(e => e.data?.relType === 'BI_RECOMMENDS').length;
   const productsCount = nodes.filter(n => n.type === 'PRODUCT').length;
   const totalRecommendationEntities = incumbentProductsCount + biRecommendsCount;
+
+  // Export hook
+  const { exportData, isExporting, exportError, lastExportResult, clearError } = useExport();
+  
+  // Export menu state
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
+  const exportMenuOpen = Boolean(exportMenuAnchor);
+  
+  // Success snackbar state
+  const [showSuccessSnackbar, setShowSuccessSnackbar] = useState(false);
+
+  // Check if export is available
+  const { canExport, reason: cannotExportReason } = exportService.canExport(nodes.length);
+  
+  // Estimate export rows
+  const estimatedRows = exportService.estimateRowCount(
+    nodes.length, 
+    edges.length, 
+    recommendationsMode
+  );
 
   const handleRecommendationsToggle = async (checked: boolean) => {
     console.log(`🎯 Recommendations mode ${checked ? 'ENABLED' : 'DISABLED'}`);
@@ -70,6 +113,36 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       console.error(`🎯 Failed to switch to ${checked ? 'recommendations' : 'standard'} mode:`, err);
       // Revert local state if the mode change failed
       setRecommendationsMode(!checked);
+    }
+  };
+
+  const handleExportClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (canExport) {
+      setExportMenuAnchor(event.currentTarget);
+    }
+  };
+
+  const handleExportMenuClose = () => {
+    setExportMenuAnchor(null);
+  };
+
+  const handleExport = async (format: 'excel' | 'csv') => {
+    handleExportMenuClose();
+    
+    if (!currentRegions?.[0]) {
+      console.error('No region selected for export');
+      return;
+    }
+
+    const result = await exportData({
+      region: currentRegions[0],
+      filters: currentFilters,
+      recommendationsMode,
+      format
+    });
+
+    if (result.success) {
+      setShowSuccessSnackbar(true);
     }
   };
 
@@ -132,7 +205,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         </Box>
       </Box>
 
-      {/* Right Side - Simplified Controls Panel */}
+      {/* Right Side - Controls Panel with Export */}
       <Box sx={{
         display: 'flex',
         alignItems: 'center',
@@ -145,7 +218,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         py: 1,
         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
       }}>
-        {/* Product Recommendations Toggle - FIXED */}
+        {/* Product Recommendations Toggle */}
         <FormControlLabel
           control={
             <Switch
@@ -153,13 +226,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
               onChange={(e) => handleRecommendationsToggle(e.target.checked)}
               sx={{
                 '& .MuiSwitch-switchBase.Mui-checked': { 
-                  color: '#6366f1', // Purple for consistency
+                  color: '#6366f1',
                   '&:hover': {
                     bgcolor: 'rgba(99, 102, 241, 0.08)'
                   }
                 },
                 '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { 
-                  backgroundColor: '#6366f1' // Purple for consistency
+                  backgroundColor: '#6366f1'
                 },
                 '& .MuiSwitch-track': {
                   backgroundColor: isDarkTheme ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'
@@ -311,7 +384,177 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
             {isDarkTheme ? <DarkMode fontSize="small" /> : <LightMode fontSize="small" />}
           </IconButton>
         </Tooltip>
+
+        {/* Divider before export button */}
+        <Box sx={{
+          width: '1px',
+          height: '32px',
+          bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+          mx: 1
+        }} />
+
+        {/* Export Button */}
+        <Tooltip 
+          title={
+            canExport 
+              ? `Export ${estimatedRows} rows to Excel or CSV` 
+              : cannotExportReason
+          } 
+          arrow
+        >
+          <span>
+            <IconButton
+              onClick={handleExportClick}
+              disabled={!canExport || isExporting}
+              sx={{
+                color: canExport ? '#10b981' : 'rgba(255, 255, 255, 0.3)',
+                bgcolor: canExport ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                border: `1px solid ${canExport ? 'rgba(16, 185, 129, 0.3)' : 'transparent'}`,
+                borderRadius: 2,
+                p: 1,
+                transition: 'all 0.2s ease',
+                position: 'relative',
+                '&:hover': canExport ? {
+                  bgcolor: 'rgba(16, 185, 129, 0.25)',
+                  transform: 'scale(1.05)'
+                } : {},
+                '&:disabled': {
+                  color: 'rgba(255, 255, 255, 0.3)',
+                  cursor: 'not-allowed'
+                }
+              }}
+            >
+              {isExporting ? (
+                <CircularProgress size={20} sx={{ color: '#10b981' }} />
+              ) : (
+                <Download fontSize="small" />
+              )}
+            </IconButton>
+          </span>
+        </Tooltip>
+
+        {/* Export Format Menu */}
+        <Menu
+          anchorEl={exportMenuAnchor}
+          open={exportMenuOpen}
+          onClose={handleExportMenuClose}
+          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          PaperProps={{
+            sx: {
+              bgcolor: isDarkTheme ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              border: `1px solid ${isDarkTheme ? 'rgba(16, 185, 129, 0.3)' : 'rgba(16, 185, 129, 0.2)'}`,
+              mt: 1
+            }
+          }}
+        >
+          <MenuItem onClick={() => handleExport('excel')}>
+            <ListItemIcon>
+              <TableChart sx={{ color: '#10b981' }} fontSize="small" />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Export to Excel"
+              secondary={`~${estimatedRows} rows, multiple sheets`}
+              primaryTypographyProps={{
+                sx: { color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)' }
+              }}
+              secondaryTypographyProps={{
+                sx: { color: isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)', fontSize: '0.7rem' }
+              }}
+            />
+          </MenuItem>
+          <MenuItem onClick={() => handleExport('csv')}>
+            <ListItemIcon>
+              <FileDownload sx={{ color: '#10b981' }} fontSize="small" />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Export to CSV"
+              secondary={`~${estimatedRows} rows, simple format`}
+              primaryTypographyProps={{
+                sx: { color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)' }
+              }}
+              secondaryTypographyProps={{
+                sx: { color: isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)', fontSize: '0.7rem' }
+              }}
+            />
+          </MenuItem>
+        </Menu>
+
+        {/* Export indicator badge when data is exportable */}
+        {canExport && estimatedRows > 0 && (
+          <Chip
+            label={`${estimatedRows} rows`}
+            size="small"
+            sx={{
+              bgcolor: 'rgba(16, 185, 129, 0.15)',
+              color: '#10b981',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              fontSize: '0.7rem',
+              height: 20,
+              fontWeight: 'bold'
+            }}
+          />
+        )}
       </Box>
+
+      {/* Success Snackbar */}
+      <Snackbar
+        open={showSuccessSnackbar}
+        autoHideDuration={4000}
+        onClose={() => setShowSuccessSnackbar(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={() => setShowSuccessSnackbar(false)} 
+          severity="success"
+          icon={<CheckCircle />}
+          sx={{
+            bgcolor: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            color: '#10b981',
+            '& .MuiAlert-icon': {
+              color: '#10b981'
+            }
+          }}
+        >
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              Export Successful
+            </Typography>
+            <Typography variant="caption" sx={{ opacity: 0.8 }}>
+              {lastExportResult?.filename} ({lastExportResult?.rowCount} rows)
+            </Typography>
+          </Box>
+        </Alert>
+      </Snackbar>
+
+      {/* Error Snackbar */}
+      <Snackbar
+        open={!!exportError}
+        autoHideDuration={6000}
+        onClose={clearError}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={clearError} 
+          severity="error"
+          sx={{
+            bgcolor: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#ef4444'
+          }}
+        >
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+              Export Failed
+            </Typography>
+            <Typography variant="caption" sx={{ opacity: 0.8 }}>
+              {exportError}
+            </Typography>
+          </Box>
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

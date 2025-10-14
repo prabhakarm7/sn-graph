@@ -26,6 +26,8 @@ from app.services.complete_backend_filter_service import complete_backend_filter
 # Import routers
 from app.api.router import api_router
 from app.api.complete_backend_router import complete_backend_router
+from app.api.export_router import export_router
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 FRONTEND_BUILD = BASE_DIR / "frontend" / "build"
@@ -52,59 +54,60 @@ app.add_middleware(
 # Include API routers
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(complete_backend_router, prefix="/api/v1")  # NEW: Complete backend processing
+app.include_router(export_router, prefix="/api/v1")
 
 # Store startup time
 app.state.start_time = time.time()
 
 # Enhanced health check endpoint
-@app.get("/health")
-async def health_check():
-    """Enhanced health check with complete backend service status."""
-    try:
-        # Check both services
-        graph_db_connected = graph_service.health_check()
-        backend_service_connected = complete_backend_filter_service.driver is not None
+# @app.get("/health")
+# async def health_check():
+#     """Enhanced health check with complete backend service status."""
+#     try:
+#         # Check both services
+#         graph_db_connected = graph_service.health_check()
+#         backend_service_connected = complete_backend_filter_service.driver is not None
         
-        uptime_seconds = time.time() - app.state.start_time
+#         uptime_seconds = time.time() - app.state.start_time
         
-        # Get database stats if connected
-        db_stats = None
-        if graph_db_connected:
-            try:
-                db_stats = graph_service.get_database_stats()
-            except Exception as e:
-                print(f"Warning: Could not get database stats: {e}")
+#         # Get database stats if connected
+#         db_stats = None
+#         if graph_db_connected:
+#             try:
+#                 db_stats = graph_service.get_database_stats()
+#             except Exception as e:
+#                 print(f"Warning: Could not get database stats: {e}")
         
-        return {
-            "status": "healthy" if (graph_db_connected and backend_service_connected) else "partial",
-            "timestamp": time.time(),
-            "services": {
-                "graph_service": graph_db_connected,
-                "complete_backend_service": backend_service_connected,
-                "database_connected": graph_db_connected
-            },
-            "features": {
-                "original_hierarchical_filters": True,
-                "complete_backend_processing": backend_service_connected,
-                "server_side_filtering": True,
-                "performance_optimization": True,
-                "embedded_rating_collection": True,
-                "smart_node_limiting": True
-            },
-            "uptime_seconds": uptime_seconds,
-            "version": API_VERSION,
-            "database_stats": db_stats
-        }
+#         return {
+#             "status": "healthy" if (graph_db_connected and backend_service_connected) else "partial",
+#             "timestamp": time.time(),
+#             "services": {
+#                 "graph_service": graph_db_connected,
+#                 "complete_backend_service": backend_service_connected,
+#                 "database_connected": graph_db_connected
+#             },
+#             "features": {
+#                 "original_hierarchical_filters": True,
+#                 "complete_backend_processing": backend_service_connected,
+#                 "server_side_filtering": True,
+#                 "performance_optimization": True,
+#                 "embedded_rating_collection": True,
+#                 "smart_node_limiting": True
+#             },
+#             "uptime_seconds": uptime_seconds,
+#             "version": API_VERSION,
+#             "database_stats": db_stats
+#         }
         
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "status": "unhealthy",
-                "error": str(e),
-                "timestamp": time.time()
-            }
-        )
+#     except Exception as e:
+#         return JSONResponse(
+#             status_code=500,
+#             content={
+#                 "status": "unhealthy",
+#                 "error": str(e),
+#                 "timestamp": time.time()
+#             }
+#         )
 
 # Mount static files for React app (AFTER API routes)
 if FRONTEND_STATIC.exists():
