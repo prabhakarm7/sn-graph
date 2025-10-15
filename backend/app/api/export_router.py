@@ -116,26 +116,86 @@ def flatten_graph_to_table(
 ) -> List[Dict[str, Any]]:
     """
     Flatten graph structure into table rows.
-    Each row = one complete relationship path.
-    FIXED: Only shows products for consultants specified in OWNS.consultant field.
+    Shows ALL consultant-company relationships, even if no products associated.
+    Products only appear for consultants specified in OWNS.consultant field.
     """
     
     # Create lookup maps for fast access
     nodes_by_id = {node['id']: node for node in nodes}
     
+    # Helper function to create row with consistent columns
+    def create_row(
+        consultant=None,
+        field_consultant=None,
+        company=None,
+        cover_rel=None,
+        product_info=None,
+        rating=None,
+        has_products_status='Unknown'
+    ):
+        """Create a standardized row with all columns."""
+        
+        base_row = {
+            # Consultant Info
+            'Consultant': consultant.get('data', {}).get('name', 'N/A') if consultant else 'N/A',
+            # 'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
+            'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
+            # 'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A',
+            # 'Consultant Rating': rating or 'N/A',
+            
+            # Company Info
+            'Company': company.get('data', {}).get('name', 'N/A') if company else 'N/A',
+            # 'Company Channel': company.get('data', {}).get('channel', 'N/A') if company else 'N/A',
+            # 'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A') if company else 'N/A',
+        }
+        
+        if recommendations_mode:
+            # Recommendations mode specific columns
+            base_row.update({
+                # Incumbent Product Info
+                'Manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
+                'Incumbent Product': product_info['incumbent'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
+                # 'Incumbent Mandate Status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
+                # 'Incumbent Commitment Value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
+                
+                # Recommended Product Info
+                'Recommended Product': product_info['recommended'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
+                # 'Recommended Asset Class': product_info['recommended'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
+                # 'Recommended Universe': product_info['recommended'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
+                
+                # BI Recommendation Metrics
+                # 'Opportunity Type': product_info['bi_rel'].get('data', {}).get('opportunity_type', 'N/A') if product_info else 'N/A',
+                'BI Returns Summary': product_info['bi_rel'].get('data', {}).get('returns_summary', 'N/A') if product_info else 'N/A',
+                # 'BI Alpha Summary': product_info['bi_rel'].get('data', {}).get('annualised_alpha_summary', 'N/A') if product_info else 'N/A',
+                # 'BI Batting Average': product_info['bi_rel'].get('data', {}).get('batting_average_summary', 'N/A') if product_info else 'N/A',
+                # 'BI Information Ratio': product_info['bi_rel'].get('data', {}).get('information_ratio_summary', 'N/A') if product_info else 'N/A',
+            })
+        else:
+            # Standard mode specific columns
+            base_row.update({
+                # 'Consultant Region': consultant.get('data', {}).get('region', 'N/A') if consultant else 'N/A',
+                # 'Company Advisor': company.get('data', {}).get('pca', 'N/A') if company else 'N/A',
+                
+                # Product Info
+                'Product': product_info['product'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
+                # 'Product Asset Class': product_info['product'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
+                # 'Product Universe': product_info['product'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
+                
+                # # Mandate Info
+                # 'Mandate Status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
+                # 'Commitment Value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
+                # 'Mandate Manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
+                # 'Manager Since Date': product_info['owns_rel'].get('data', {}).get('manager_since_date', 'N/A') if product_info else 'N/A',
+            })
+        
+        # Add debug column if needed
+        # base_row['Has Products'] = has_products_status
+        
+        return base_row
+
+    
     # Pre-build consultant coverage map: company_id -> list of (consultant, field_consultant, cover_rel)
     company_coverage_map = {}
-    
-    # Also build consultant ID to consultant node mapping
-    consultant_id_to_node = {}
-    
-    for node in nodes:
-        if node.get('type') == 'CONSULTANT':
-            consultant_id = node.get('data', {}).get('id')
-            if consultant_id:
-                consultant_id_to_node[consultant_id] = node
-    
-    print(f"Built consultant ID mapping with {len(consultant_id_to_node)} consultants")
     
     for rel in relationships:
         if rel.get('data', {}).get('relType') == 'COVERS':
@@ -179,246 +239,235 @@ def flatten_graph_to_table(
     table_rows = []
     
     if recommendations_mode:
-        # Process BI_RECOMMENDS relationships
-        for rel in relationships:
-            if rel.get('data', {}).get('relType') != 'BI_RECOMMENDS':
+        # Build a map of company -> consultant -> list of product_info
+        company_consultant_products = {}
+        
+        for bi_rel in relationships:
+            if bi_rel.get('data', {}).get('relType') != 'BI_RECOMMENDS':
                 continue
             
-            incumbent_id = rel['source']
-            recommended_id = rel['target']
+            incumbent_id = bi_rel['source']
+            recommended_id = bi_rel['target']
             
             incumbent = nodes_by_id.get(incumbent_id, {})
             recommended = nodes_by_id.get(recommended_id, {})
             
             # Find company that owns incumbent AND get consultant from OWNS relationship
-            company = None
-            owns_rel = None
-            owns_consultant_ids = []  # NEW: Get consultant(s) from OWNS relationship
-            
-            for r in relationships:
-                if r.get('data', {}).get('relType') == 'OWNS' and r['target'] == incumbent_id:
-                    company = nodes_by_id.get(r['source'])
-                    owns_rel = r
+            for owns_rel in relationships:
+                if owns_rel.get('data', {}).get('relType') == 'OWNS' and owns_rel['target'] == incumbent_id:
+                    company_id = owns_rel['source']
+                    company = nodes_by_id.get(company_id)
+                    
+                    if not company:
+                        continue
                     
                     # Extract consultant ID(s) from OWNS relationship
-                    owns_consultant = r.get('data', {}).get('consultant')
+                    owns_consultant = owns_rel.get('data', {}).get('consultant')
+                    owns_consultant_ids = []
                     if owns_consultant:
                         if isinstance(owns_consultant, list):
                             owns_consultant_ids = owns_consultant
                         else:
                             owns_consultant_ids = [owns_consultant]
                     
+                    # Store product info by company and consultant
+                    if company_id not in company_consultant_products:
+                        company_consultant_products[company_id] = {}
+                    
+                    # If no specific consultant, mark as "any"
+                    consultant_keys = owns_consultant_ids if owns_consultant_ids else ['__ANY__']
+                    
+                    for cons_key in consultant_keys:
+                        if cons_key not in company_consultant_products[company_id]:
+                            company_consultant_products[company_id][cons_key] = []
+                        
+                        company_consultant_products[company_id][cons_key].append({
+                            'incumbent': incumbent,
+                            'recommended': recommended,
+                            'owns_rel': owns_rel,
+                            'bi_rel': bi_rel
+                        })
+                    
                     break
+        
+        # Now iterate through ALL company-consultant relationships
+        processed_combinations = set()
+        
+        for company_id, coverages in company_coverage_map.items():
+            company = nodes_by_id.get(company_id, {})
             
-            if not company:
-                continue
-            
-            print(f"Processing BI_RECOMMENDS: Company={company.get('data', {}).get('name')}, "
-                  f"Incumbent={incumbent.get('data', {}).get('name')}, "
-                  f"OWNS.consultant={owns_consultant_ids}")
-            
-            # Get all consultant coverages for this company
-            coverages = company_coverage_map.get(company['id'], [])
-            
-            if not coverages:
-                # No consultant coverage - only create row if OWNS has no consultant specified
-                if not owns_consultant_ids:
-                    row = {
-                        'Consultant': 'N/A',
-                        'Consultant Advisor': 'N/A',
-                        'Field Consultant': 'N/A',
-                        'Company': company.get('data', {}).get('name', 'N/A'),
-                        'Company Channel': company.get('data', {}).get('channel', 'N/A'),
-                        'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
-                        'Incumbent Product': incumbent.get('data', {}).get('name', 'N/A'),
-                        'Incumbent Manager': owns_rel.get('data', {}).get('manager', 'N/A') if owns_rel else 'N/A',
-                        'Incumbent Mandate Status': owns_rel.get('data', {}).get('mandate_status', 'N/A') if owns_rel else 'N/A',
-                        'Incumbent Commitment Value': owns_rel.get('data', {}).get('commitment_market_value', 'N/A') if owns_rel else 'N/A',
-                        'Recommended Product': recommended.get('data', {}).get('name', 'N/A'),
-                        'Recommended Asset Class': recommended.get('data', {}).get('asset_class', 'N/A'),
-                        'Recommended Universe': recommended.get('data', {}).get('universe_name', 'N/A'),
-                        'Opportunity Type': rel.get('data', {}).get('opportunity_type', 'N/A'),
-                        'BI Returns Summary': rel.get('data', {}).get('returns_summary', 'N/A'),
-                        'BI Alpha Summary': rel.get('data', {}).get('annualised_alpha_summary', 'N/A'),
-                        'BI Batting Average': rel.get('data', {}).get('batting_average_summary', 'N/A'),
-                        'BI Information Ratio': rel.get('data', {}).get('information_ratio_summary', 'N/A'),
-                        'Consultant Rating': 'N/A',
-                        'Consultant Influence Level': 'N/A'
-                    }
-                    table_rows.append(row)
-                continue
-            
-            # CRITICAL FIX: Only create rows for consultants that match OWNS.consultant
             for coverage in coverages:
                 consultant = coverage['consultant']
                 field_consultant = coverage['field_consultant']
                 cover_rel = coverage['cover_rel']
                 
-                # Skip if consultant doesn't exist
                 if not consultant:
                     continue
                 
                 consultant_id = consultant.get('data', {}).get('id')
                 
-                # CRITICAL CHECK: Only include this row if consultant matches OWNS.consultant
-                # If OWNS has no consultant specified, include all consultants
-                if owns_consultant_ids and consultant_id not in owns_consultant_ids:
-                    print(f"  Skipping consultant {consultant.get('data', {}).get('name')} - "
-                          f"not in OWNS.consultant list")
-                    continue
+                # Check if this consultant has products for this company
+                company_products = company_consultant_products.get(company_id, {})
+                consultant_products = company_products.get(consultant_id, [])
+                any_products = company_products.get('__ANY__', [])
                 
-                print(f"  Including consultant {consultant.get('data', {}).get('name')} - "
-                      f"matches OWNS.consultant")
+                # If consultant has specific products, use those
+                if consultant_products:
+                    for product_info in consultant_products:
+                        row_key = f"{company_id}_{consultant_id}_{product_info['incumbent']['id']}_{product_info['recommended']['id']}"
+                        if row_key in processed_combinations:
+                            continue
+                        processed_combinations.add(row_key)
+                        
+                        # Find consultant rating on recommended product
+                        rating = None
+                        for r in relationships:
+                            if (r.get('data', {}).get('relType') == 'RATES' and 
+                                r['source'] == consultant['id'] and 
+                                r['target'] == product_info['recommended']['id']):
+                                rating = r.get('data', {}).get('rankgroup')
+                                break
+                        
+                        row = create_row(
+                            consultant=consultant,
+                            field_consultant=field_consultant,
+                            company=company,
+                            cover_rel=cover_rel,
+                            product_info=product_info,
+                            rating=rating,
+                            has_products_status='Yes'
+                        )
+                        table_rows.append(row)
                 
-                # Find consultant rating on recommended product (only for matching consultant)
-                rating = None
-                for r in relationships:
-                    if (r.get('data', {}).get('relType') == 'RATES' and 
-                        r['source'] == consultant['id'] and 
-                        r['target'] == recommended_id):
-                        rating = r.get('data', {}).get('rankgroup')
-                        break
-                
-                # Build recommendation row
-                row = {
-                    'Consultant': consultant.get('data', {}).get('name', 'N/A'),
-                    'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A'),
-                    'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
-                    'Company': company.get('data', {}).get('name', 'N/A'),
-                    'Company Channel': company.get('data', {}).get('channel', 'N/A'),
-                    'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
-                    'Incumbent Product': incumbent.get('data', {}).get('name', 'N/A'),
-                    'Incumbent Manager': owns_rel.get('data', {}).get('manager', 'N/A') if owns_rel else 'N/A',
-                    'Incumbent Mandate Status': owns_rel.get('data', {}).get('mandate_status', 'N/A') if owns_rel else 'N/A',
-                    'Incumbent Commitment Value': owns_rel.get('data', {}).get('commitment_market_value', 'N/A') if owns_rel else 'N/A',
-                    'Recommended Product': recommended.get('data', {}).get('name', 'N/A'),
-                    'Recommended Asset Class': recommended.get('data', {}).get('asset_class', 'N/A'),
-                    'Recommended Universe': recommended.get('data', {}).get('universe_name', 'N/A'),
-                    'Opportunity Type': rel.get('data', {}).get('opportunity_type', 'N/A'),
-                    'BI Returns Summary': rel.get('data', {}).get('returns_summary', 'N/A'),
-                    'BI Alpha Summary': rel.get('data', {}).get('annualised_alpha_summary', 'N/A'),
-                    'BI Batting Average': rel.get('data', {}).get('batting_average_summary', 'N/A'),
-                    'BI Information Ratio': rel.get('data', {}).get('information_ratio_summary', 'N/A'),
-                    'Consultant Rating': rating or 'N/A',
-                    'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A'),
-                    'Coverage Path Type': coverage['path_type'],
-                    'OWNS Consultant Match': 'Yes'  # For debugging
-                }
-                
-                table_rows.append(row)
+                # If no specific products for this consultant
+                else:
+                    row_key = f"{company_id}_{consultant_id}_NO_PRODUCTS"
+                    if row_key in processed_combinations:
+                        continue
+                    processed_combinations.add(row_key)
+                    
+                    status = 'No - Products belong to other consultants' if any_products else 'No - No products for company'
+                    
+                    row = create_row(
+                        consultant=consultant,
+                        field_consultant=field_consultant,
+                        company=company,
+                        cover_rel=cover_rel,
+                        product_info=None,
+                        rating=None,
+                        has_products_status=status
+                    )
+                    table_rows.append(row)
     
     else:
-        # Process OWNS relationships (standard mode) - SAME LOGIC
-        for rel in relationships:
-            if rel.get('data', {}).get('relType') != 'OWNS':
+        # Standard mode - same logic but with different product structure
+        company_consultant_products = {}
+        
+        for owns_rel in relationships:
+            if owns_rel.get('data', {}).get('relType') != 'OWNS':
                 continue
             
-            company_id = rel['source']
-            product_id = rel['target']
+            company_id = owns_rel['source']
+            product_id = owns_rel['target']
             
             company = nodes_by_id.get(company_id, {})
             product = nodes_by_id.get(product_id, {})
             
+            if not company or not product:
+                continue
+            
             # Extract consultant ID(s) from OWNS relationship
+            owns_consultant = owns_rel.get('data', {}).get('consultant')
             owns_consultant_ids = []
-            owns_consultant = rel.get('data', {}).get('consultant')
             if owns_consultant:
                 if isinstance(owns_consultant, list):
                     owns_consultant_ids = owns_consultant
                 else:
                     owns_consultant_ids = [owns_consultant]
             
-            print(f"Processing OWNS: Company={company.get('data', {}).get('name')}, "
-                  f"Product={product.get('data', {}).get('name')}, "
-                  f"OWNS.consultant={owns_consultant_ids}")
+            # Store product info by company and consultant
+            if company_id not in company_consultant_products:
+                company_consultant_products[company_id] = {}
             
-            # Get all consultant coverages for this company
-            coverages = company_coverage_map.get(company_id, [])
+            consultant_keys = owns_consultant_ids if owns_consultant_ids else ['__ANY__']
             
-            if not coverages:
-                # No consultant coverage - only create row if OWNS has no consultant specified
-                if not owns_consultant_ids:
-                    row = {
-                        'Consultant': 'N/A',
-                        'Consultant Advisor': 'N/A',
-                        'Consultant Region': 'N/A',
-                        'Field Consultant': 'N/A',
-                        'Company': company.get('data', {}).get('name', 'N/A'),
-                        'Company Channel': company.get('data', {}).get('channel', 'N/A'),
-                        'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
-                        'Company Advisor': company.get('data', {}).get('pca', 'N/A'),
-                        'Product': product.get('data', {}).get('name', 'N/A'),
-                        'Product Asset Class': product.get('data', {}).get('asset_class', 'N/A'),
-                        'Product Universe': product.get('data', {}).get('universe_name', 'N/A'),
-                        'Consultant Influence Level': 'N/A',
-                        'Consultant Rating': 'N/A',
-                        'Mandate Status': rel.get('data', {}).get('mandate_status', 'N/A'),
-                        'Commitment Value': rel.get('data', {}).get('commitment_market_value', 'N/A'),
-                        'Mandate Manager': rel.get('data', {}).get('manager', 'N/A'),
-                        'Manager Since Date': rel.get('data', {}).get('manager_since_date', 'N/A')
-                    }
-                    table_rows.append(row)
-                continue
+            for cons_key in consultant_keys:
+                if cons_key not in company_consultant_products[company_id]:
+                    company_consultant_products[company_id][cons_key] = []
+                
+                company_consultant_products[company_id][cons_key].append({
+                    'product': product,
+                    'owns_rel': owns_rel
+                })
+        
+        # Iterate through ALL company-consultant relationships
+        processed_combinations = set()
+        
+        for company_id, coverages in company_coverage_map.items():
+            company = nodes_by_id.get(company_id, {})
             
-            # CRITICAL FIX: Only create rows for consultants that match OWNS.consultant
             for coverage in coverages:
                 consultant = coverage['consultant']
                 field_consultant = coverage['field_consultant']
                 cover_rel = coverage['cover_rel']
                 
-                # Skip if consultant doesn't exist
                 if not consultant:
                     continue
                 
                 consultant_id = consultant.get('data', {}).get('id')
                 
-                # CRITICAL CHECK: Only include this row if consultant matches OWNS.consultant
-                # If OWNS has no consultant specified, include all consultants
-                if owns_consultant_ids and consultant_id not in owns_consultant_ids:
-                    print(f"  Skipping consultant {consultant.get('data', {}).get('name')} - "
-                          f"not in OWNS.consultant list")
-                    continue
+                company_products = company_consultant_products.get(company_id, {})
+                consultant_products = company_products.get(consultant_id, [])
+                any_products = company_products.get('__ANY__', [])
                 
-                print(f"  Including consultant {consultant.get('data', {}).get('name')} - "
-                      f"matches OWNS.consultant")
+                if consultant_products:
+                    for product_info in consultant_products:
+                        row_key = f"{company_id}_{consultant_id}_{product_info['product']['id']}"
+                        if row_key in processed_combinations:
+                            continue
+                        processed_combinations.add(row_key)
+                        
+                        # Find consultant rating
+                        rating = None
+                        for r in relationships:
+                            if (r.get('data', {}).get('relType') == 'RATES' and 
+                                r['source'] == consultant['id'] and 
+                                r['target'] == product_info['product']['id']):
+                                rating = r.get('data', {}).get('rankgroup')
+                                break
+                        
+                        row = create_row(
+                            consultant=consultant,
+                            field_consultant=field_consultant,
+                            company=company,
+                            cover_rel=cover_rel,
+                            product_info=product_info,
+                            rating=rating,
+                            has_products_status='Yes'
+                        )
+                        table_rows.append(row)
                 
-                # Find consultant rating (only for matching consultant)
-                rating = None
-                for r in relationships:
-                    if (r.get('data', {}).get('relType') == 'RATES' and 
-                        r['source'] == consultant['id'] and 
-                        r['target'] == product_id):
-                        rating = r.get('data', {}).get('rankgroup')
-                        break
-                
-                # Build standard row
-                row = {
-                    'Consultant': consultant.get('data', {}).get('name', 'N/A'),
-                    'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A'),
-                    'Consultant Region': consultant.get('data', {}).get('region', 'N/A'),
-                    'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
-                    'Company': company.get('data', {}).get('name', 'N/A'),
-                    'Company Channel': company.get('data', {}).get('channel', 'N/A'),
-                    'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A'),
-                    'Company Advisor': company.get('data', {}).get('pca', 'N/A'),
-                    'Product': product.get('data', {}).get('name', 'N/A'),
-                    'Product Asset Class': product.get('data', {}).get('asset_class', 'N/A'),
-                    'Product Universe': product.get('data', {}).get('universe_name', 'N/A'),
-                    'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A'),
-                    'Consultant Rating': rating or 'N/A',
-                    'Mandate Status': rel.get('data', {}).get('mandate_status', 'N/A'),
-                    'Commitment Value': rel.get('data', {}).get('commitment_market_value', 'N/A'),
-                    'Mandate Manager': rel.get('data', {}).get('manager', 'N/A'),
-                    'Manager Since Date': rel.get('data', {}).get('manager_since_date', 'N/A'),
-                    'Coverage Path Type': coverage['path_type'],
-                    'OWNS Consultant Match': 'Yes'  # For debugging
-                }
-                
-                table_rows.append(row)
+                else:
+                    row_key = f"{company_id}_{consultant_id}_NO_PRODUCTS"
+                    if row_key in processed_combinations:
+                        continue
+                    processed_combinations.add(row_key)
+                    
+                    status = 'No - Products belong to other consultants' if any_products else 'No - No products for company'
+                    
+                    row = create_row(
+                        consultant=consultant,
+                        field_consultant=field_consultant,
+                        company=company,
+                        cover_rel=cover_rel,
+                        product_info=None,
+                        rating=None,
+                        has_products_status=status
+                    )
+                    table_rows.append(row)
     
-    print(f"Created {len(table_rows)} export rows from {len(nodes)} nodes and {len(relationships)} relationships")
+    print(f"Created {len(table_rows)} export rows (including relationships without products)")
     return table_rows
-
 
 def export_to_excel(
     data: List[Dict], 
