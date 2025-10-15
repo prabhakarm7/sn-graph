@@ -344,6 +344,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
           {managerData.length > 0 ? (
             <>
               {/* Summary Cards */}
+            {/* Summary Cards - Consistent Blue Theme */}
             <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
             <Card sx={{ 
                 flex: 1, 
@@ -367,37 +368,17 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
             <Card sx={{ 
                 flex: 1, 
                 minWidth: 180,
-                bgcolor: 'rgba(16, 185, 129, 0.1)',
-                border: '1px solid rgba(16, 185, 129, 0.3)'
+                bgcolor: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.3)'
             }}>
                 <CardContent sx={{ p: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <TrendingUp sx={{ color: '#10b981', fontSize: '1.2rem' }} />
-                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.75rem' }}>
-                    Products
-                    </Typography>
-                </Box>
-                <Typography variant="h5" sx={{ color: '#10b981', fontWeight: 'bold' }}>
-                    {new Set(managerData.map(d => d.product_name)).size}
-                </Typography>
-                </CardContent>
-            </Card>
-
-            {/* NEW: Managers Count Card */}
-            <Card sx={{ 
-                flex: 1, 
-                minWidth: 180,
-                bgcolor: 'rgba(139, 92, 246, 0.1)',
-                border: '1px solid rgba(139, 92, 246, 0.3)'
-            }}>
-                <CardContent sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <AccountBalance sx={{ color: '#8b5cf6', fontSize: '1.2rem' }} />
+                    <AccountBalance sx={{ color: '#3b82f6', fontSize: '1.2rem' }} />
                     <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.75rem' }}>
                     Managers
                     </Typography>
                 </Box>
-                <Typography variant="h5" sx={{ color: '#8b5cf6', fontWeight: 'bold' }}>
+                <Typography variant="h5" sx={{ color: '#3b82f6', fontWeight: 'bold' }}>
                     {new Set(managerData.map(d => d.manager)).size}
                 </Typography>
                 </CardContent>
@@ -406,37 +387,55 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
             <Card sx={{ 
                 flex: 1, 
                 minWidth: 180,
-                bgcolor: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.3)'
+                bgcolor: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.3)'
             }}>
                 <CardContent sx={{ p: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <Business sx={{ color: '#f59e0b', fontSize: '1.2rem' }} />
+                    <TrendingUp sx={{ color: '#3b82f6', fontSize: '1.2rem' }} />
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.75rem' }}>
+                    Products
+                    </Typography>
+                </Box>
+                <Typography variant="h5" sx={{ color: '#3b82f6', fontWeight: 'bold' }}>
+                    {new Set(managerData.map(d => d.product_name)).size}
+                </Typography>
+                </CardContent>
+            </Card>
+
+            <Card sx={{ 
+                flex: 1, 
+                minWidth: 180,
+                bgcolor: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.3)'
+            }}>
+                <CardContent sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Business sx={{ color: '#3b82f6', fontSize: '1.2rem' }} />
                     <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.75rem' }}>
                     Total Commitment
                     </Typography>
                 </Box>
-                <Typography variant="h5" sx={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '1.3rem' }}>
+                <Typography variant="h5" sx={{ color: '#3b82f6', fontWeight: 'bold', fontSize: '1.3rem' }}>
                     {formatCurrency(managerData.reduce((sum, d) => sum + d.commitment, 0))}
                 </Typography>
                 </CardContent>
             </Card>
 
-            {/* Optional: Total Market Value Card */}
             <Card sx={{ 
                 flex: 1, 
                 minWidth: 180,
-                bgcolor: 'rgba(34, 197, 94, 0.1)',
-                border: '1px solid rgba(34, 197, 94, 0.3)'
+                bgcolor: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.3)'
             }}>
                 <CardContent sx={{ p: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <ShowChart sx={{ color: '#22c55e', fontSize: '1.2rem' }} />
+                    <ShowChart sx={{ color: '#3b82f6', fontSize: '1.2rem' }} />
                     <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.75rem' }}>
                     Total Est. Value
                     </Typography>
                 </Box>
-                <Typography variant="h5" sx={{ color: '#22c55e', fontWeight: 'bold', fontSize: '1.3rem' }}>
+                <Typography variant="h5" sx={{ color: '#3b82f6', fontWeight: 'bold', fontSize: '1.3rem' }}>
                     {formatCurrency(managerData.reduce((sum, d) => sum + d.estimated_market_value, 0))}
                 </Typography>
                 </CardContent>
