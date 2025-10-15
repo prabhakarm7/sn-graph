@@ -6,7 +6,8 @@ import {
   Divider, 
   Chip, 
   Stack, 
-  LinearProgress
+  LinearProgress,
+  Tooltip
 } from '@mui/material';
 import { 
   BusinessCenter,        
@@ -21,8 +22,10 @@ import {
   Recommend,           
   AutoAwesome,          
   Star,                 // For consultant influence (crown alternative)
-  WorkOutline          // For mandate manager
+  WorkOutline,          // For mandate manager
+  Support
 } from '@mui/icons-material';
+
 import { AppNodeData, EdgeData, RankGroup } from '../types/GraphTypes';
 import { 
   getConsultantColorById,
@@ -30,6 +33,7 @@ import {
   ENTITY_COLORS,
   STATUS_COLORS
 } from '../config/ConsultantColors';
+import { ManagerRosterButton } from './ManagerRosterButton';
 
 // Helper function to find the consultant this field consultant belongs to
 const findParentConsultant = (fieldConsultantData: AppNodeData) => {
@@ -95,14 +99,16 @@ const findParentConsultant = (fieldConsultantData: AppNodeData) => {
   return fieldConsultantData.id || 'default';
 };
 
+
 export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
-  // Get color from curated palette (imported from config)
-  // const colors = getConsultantColorById(data.id);
   const colors = ENTITY_COLORS.consultant;
-
   
+  // Get advisor information
+  const consultantAdvisor = data.consultant_advisor;
+  const pca = data.pca;
+
   return (
     <div 
       style={{ 
@@ -111,6 +117,7 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
         color: 'white', 
         borderRadius: 16, 
         minWidth: 200, 
+        maxWidth: 240,
         textAlign: 'center',
         boxShadow: isHovered ? `0 8px 32px ${colors.primary}66` : `0 4px 16px ${colors.primary}33`,
         transform: isHovered ? 'scale(1.05)' : 'scale(1)',
@@ -133,6 +140,7 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
           Consultant
         </Typography>
       </Box>
+      
       <Typography variant="body1" sx={{ 
         fontWeight: 'bold', 
         fontSize: '0.95rem', 
@@ -141,15 +149,104 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
       }}>
         {data.name}
       </Typography>
-      
-      {/* Color indicator */}
-      <Box sx={{
+
+       {/* Color indicator */}
+      {/* <Box sx={{
         mt: 1,
         width: '100%',
         height: '3px',
         background: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
         borderRadius: '2px'
-      }} />
+      }} /> */}
+
+      {/* Compact Advisor Badges */}
+      {(consultantAdvisor || pca) && (
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: 0.5, 
+          mt: 1,
+          alignItems: 'center'
+        }}>
+          {consultantAdvisor && (
+            <Tooltip 
+              title={`Consultant Advisor: ${Array.isArray(consultantAdvisor) ? consultantAdvisor.join(', ') : consultantAdvisor}`} 
+              arrow 
+              placement="top"
+            >
+              <Chip
+                icon={<Support sx={{ fontSize: '0.7rem' }} />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                    <Typography variant="caption" sx={{ fontSize: '0.65rem', opacity: 0.8 }}>
+                      Consultant Advisor:
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
+                      {Array.isArray(consultantAdvisor) 
+                        ? consultantAdvisor.length > 1 
+                          ? `${consultantAdvisor[0].split(' ')[0]}+${consultantAdvisor.length - 1}`
+                          : consultantAdvisor[0].split(' ')[0]
+                        : consultantAdvisor.split(' ')[0]}
+                    </Typography>
+                  </Box>
+                }
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(99, 102, 241, 0.2)',
+                  color: colors.primary,
+                  height: 20,
+                  fontSize: '0.65rem',
+                  border: `1px solid ${colors.primary}40`,
+                  '& .MuiChip-icon': {
+                    color: colors.primary,
+                    fontSize: '0.7rem'
+                  }
+                }}
+              />
+            </Tooltip>
+          )}
+          
+          {pca && (
+            <Tooltip 
+              title={`Primary Consultant Advisor: ${Array.isArray(pca) ? pca.join(', ') : pca}`} 
+              arrow 
+              placement="top"
+            >
+              <Chip
+                icon={<Star sx={{ fontSize: '0.7rem' }} />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                    <Typography variant="caption" sx={{ fontSize: '0.65rem', opacity: 0.8 }}>
+                      PCA:
+                    </Typography>
+                    <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
+                      {Array.isArray(pca) 
+                        ? pca.length > 1 
+                          ? `${pca[0].split(' ')[0]}+${pca.length - 1}`
+                          : pca[0].split(' ')[0]
+                        : pca.split(' ')[0]}
+                    </Typography>
+                  </Box>
+                }
+                size="small"
+                sx={{
+                 bgcolor: 'rgba(99, 102, 241, 0.2)',
+                  color: colors.primary,
+                  height: 20,
+                  fontSize: '0.65rem',
+                  border: `1px solid ${colors.primary}40`,
+                  '& .MuiChip-icon': {
+                    color: colors.primary,
+                    fontSize: '0.7rem'
+                  }
+                }}
+              />
+            </Tooltip>
+          )}
+        </Box>
+      )}
+      
+     
       
       <Handle type="source" position={Position.Bottom} style={{ background: colors.primary }} />
     </div>
@@ -244,6 +341,19 @@ export const CompanyNode = React.memo(function CompanyNode({ data }: NodeProps<A
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {/* Manager Roster Button - positioned in top right */}
+      <Box sx={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        zIndex: 10
+      }}>
+        <ManagerRosterButton 
+          companyId={data.id}
+          companyName={data.name}
+          isDarkTheme={true}
+        />
+      </Box>
       <Handle type="target" position={Position.Top} style={{ background: 'inherit' }} />
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1, gap: 1 }}>
         <CorporateFare sx={{ fontSize: '1.5rem', color: colors.primary }} />
