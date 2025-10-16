@@ -53,7 +53,7 @@ interface ManagerViewData {
   consultant_name: string;
   manager_name: string;
   multi_mandate_manager: string;
-  estimated_market_value: number;
+  est_market_value: number;
   asset_class: string;
   universe_name: string;
   recommended_product: string;
@@ -70,15 +70,15 @@ interface RecommendationsViewData {
   universe_name: string;
   universe_recent_score: number;
   num_institutional_clients_for_product: number;
-  batting_average_comparison_1_year_jpm_vs_competitor: string;
-  returns_comparison_1_year_jpm_vs_competitor: string;
-  standard_deviation_comparison_1_year_jpm_vs_competitor: string;
-  batting_average_comparison_3_year_jpm_vs_competitor: string;
-  returns_comparison_3_year_jpm_vs_competitor: string;
-  standard_deviation_comparison_3_year_jpm_vs_competitor: string;
-  batting_average_comparison_5_year_jpm_vs_competitor: string;
-  returns_comparison_5_year_jpm_vs_competitor: string;
-  standard_deviation_comparison_5_year_jpm_vs_competitor: string;
+  batting_average_1_year_jpm_vs_competitor: string;
+  returns_1_year_jpm_vs_competitor: string;
+  standard_deviation_1_year_jpm_vs_competitor: string;
+  batting_average_3_year_jpm_vs_competitor: string;
+  returns_3_year_jpm_vs_competitor: string;
+  standard_deviation_3_year_jpm_vs_competitor: string;
+  batting_average_5_year_jpm_vs_competitor: string;
+  returns_5_year_jpm_vs_competitor: string;
+  standard_deviation_5_year_jpm_vs_competitor: string;
 }
 
 interface ManagerRosterResponse {
@@ -245,7 +245,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
   const renderManagerViewSummary = () => {
     const uniqueManagers = new Set(managerData.map(d => d.manager_name));
     const uniqueConsultants = new Set(managerData.map(d => d.consultant_name));
-    const totalValue = managerData.reduce((sum, d) => sum + d.estimated_market_value, 0);
+    const totalValue = managerData.reduce((sum, d) => sum + d.est_market_value, 0);
     
     return (
       <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
@@ -461,7 +461,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.75rem'
             }}>
-              estimated_market_value
+              est_market_value
             </TableCell>
             <TableCell sx={{ 
               bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
@@ -546,7 +546,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 fontWeight: 'medium',
                 fontSize: '0.8rem'
               }}>
-                {formatCurrency(row.estimated_market_value)}
+                {formatCurrency(row.est_market_value)}
               </TableCell>
               <TableCell sx={{ 
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
@@ -723,7 +723,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
           {/* Subheader row for performance metrics */}
           <TableRow>
             {/* First 10 columns remain empty */}
-            {[...Array(10)].map((_, i) => (
+            {[...Array(9)].map((_, i) => (
               <TableCell 
                 key={i}
                 sx={{ 
@@ -742,7 +742,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontSize: '0.7rem',
               borderLeft: '2px solid rgba(245, 158, 11, 0.3)'
             }}>
-              batting_average_comparison_1_year_jpm_vs_competitor
+              batting_average_1_year_jpm_vs_competitor
             </TableCell>
             <TableCell align="center" sx={{ 
               bgcolor: isDarkTheme ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.05)',
@@ -750,7 +750,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.7rem'
             }}>
-              returns_comparison_1_year_jpm_vs_competitor
+              returns_1_year_jpm_vs_competitor
             </TableCell>
             <TableCell align="center" sx={{ 
               bgcolor: isDarkTheme ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.05)',
@@ -759,7 +759,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontSize: '0.7rem',
               borderRight: '2px solid rgba(245, 158, 11, 0.3)'
             }}>
-              standard_deviation_comparison_1_year_jpm_vs_competitor
+              standard_deviation_1_year_jpm_vs_competitor
             </TableCell>
             
             {/* 3 Year metrics */}
@@ -770,7 +770,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontSize: '0.7rem',
               borderLeft: '2px solid rgba(99, 102, 241, 0.3)'
             }}>
-              batting_average_comparison_3_year_jpm_vs_competitor
+              batting_average_3_year_jpm_vs_competitor
             </TableCell>
             <TableCell align="center" sx={{ 
               bgcolor: isDarkTheme ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)',
@@ -778,7 +778,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.7rem'
             }}>
-              returns_comparison_3_year_jpm_vs_competitor
+              returns_3_year_jpm_vs_competitor
             </TableCell>
             <TableCell align="center" sx={{ 
               bgcolor: isDarkTheme ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)',
@@ -787,7 +787,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontSize: '0.7rem',
               borderRight: '2px solid rgba(99, 102, 241, 0.3)'
             }}>
-              standard_deviation_comparison_3_year_jpm_vs_competitor
+              standard_deviation_3_year_jpm_vs_competitor
             </TableCell>
             
             {/* 5 Year metrics */}
@@ -798,7 +798,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontSize: '0.7rem',
               borderLeft: '2px solid rgba(16, 185, 129, 0.3)'
             }}>
-              batting_average_comparison_5_year_jpm_vs_competitor
+              batting_average_5_year_jpm_vs_competitor
             </TableCell>
             <TableCell align="center" sx={{ 
               bgcolor: isDarkTheme ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.05)',
@@ -806,7 +806,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.7rem'
             }}>
-              returns_comparison_5_year_jpm_vs_competitor
+              returns_5_year_jpm_vs_competitor
             </TableCell>
             <TableCell align="center" sx={{ 
               bgcolor: isDarkTheme ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.05)',
@@ -815,7 +815,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontSize: '0.7rem',
               borderRight: '2px solid rgba(16, 185, 129, 0.3)'
             }}>
-              standard_deviation_comparison_5_year_jpm_vs_competitor
+              standard_deviation_5_year_jpm_vs_competitor
             </TableCell>
           </TableRow>
         </TableHead>
@@ -938,7 +938,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 borderLeft: '2px solid rgba(245, 158, 11, 0.3)'
               }}>
                 <Chip
-                  label={row.batting_average_comparison_1_year_jpm_vs_competitor}
+                  label={row.batting_average_1_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(245, 158, 11, 0.15)',
@@ -955,7 +955,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 fontSize: '0.8rem'
               }}>
                 <Chip
-                  label={row.returns_comparison_1_year_jpm_vs_competitor}
+                  label={row.returns_1_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(245, 158, 11, 0.15)',
@@ -973,7 +973,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 borderRight: '2px solid rgba(245, 158, 11, 0.3)'
               }}>
                 <Chip
-                  label={row.standard_deviation_comparison_1_year_jpm_vs_competitor}
+                  label={row.standard_deviation_1_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(245, 158, 11, 0.15)',
@@ -993,7 +993,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 borderLeft: '2px solid rgba(99, 102, 241, 0.3)'
               }}>
                 <Chip
-                  label={row.batting_average_comparison_3_year_jpm_vs_competitor}
+                  label={row.batting_average_3_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(99, 102, 241, 0.15)',
@@ -1010,7 +1010,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 fontSize: '0.8rem'
               }}>
                 <Chip
-                  label={row.returns_comparison_3_year_jpm_vs_competitor}
+                  label={row.returns_3_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(99, 102, 241, 0.15)',
@@ -1028,7 +1028,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 borderRight: '2px solid rgba(99, 102, 241, 0.3)'
               }}>
                 <Chip
-                  label={row.standard_deviation_comparison_3_year_jpm_vs_competitor}
+                  label={row.standard_deviation_3_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(99, 102, 241, 0.15)',
@@ -1048,7 +1048,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 borderLeft: '2px solid rgba(16, 185, 129, 0.3)'
               }}>
                 <Chip
-                  label={row.batting_average_comparison_5_year_jpm_vs_competitor}
+                  label={row.batting_average_5_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(16, 185, 129, 0.15)',
@@ -1065,7 +1065,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 fontSize: '0.8rem'
               }}>
                 <Chip
-                  label={row.returns_comparison_5_year_jpm_vs_competitor}
+                  label={row.returns_5_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(16, 185, 129, 0.15)',
@@ -1083,7 +1083,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 borderRight: '2px solid rgba(16, 185, 129, 0.3)'
               }}>
                 <Chip
-                  label={row.standard_deviation_comparison_5_year_jpm_vs_competitor}
+                  label={row.standard_deviation_5_year_jpm_vs_competitor}
                   size="small"
                   sx={{
                     bgcolor: 'rgba(16, 185, 129, 0.15)',

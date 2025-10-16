@@ -661,7 +661,8 @@ def export_to_csv(
 @export_router.get("/manager-roster/{company_id}")
 async def get_manager_roster(
     company_id: str,
-    format: str = Query("table", regex="^(table|excel|csv)$", description="Response format")
+    format: str = Query("table", regex="^(table|excel|csv)$", description="Response format"),
+    use_real_data: bool = Query(False, description="Use real database data instead of mock data")
 ):
     """
     Get manager roster data for a specific company.
@@ -679,17 +680,33 @@ async def get_manager_roster(
       batting/returns/std_dev comparisons for 1/3/5 years
     """
     try:
-        print(f"📊 Manager Roster request: company={company_id}, format={format}")
+        print(f"📊 Manager Roster request: company={company_id}, format={format}, real_data={use_real_data}")
         
-        # Get both views
-        manager_view_data = get_mock_manager_view_data(company_id)
-        recommendations_view_data = get_mock_recommendations_view_data(company_id)
+        # Get data
+        result = get_manager_roster_data(company_id, use_mock=not use_real_data)
+        
+        # Convert from tabular format back to dicts for API response
+        manager_view_data = []
+        if result['manager_view']['data']:
+            columns = result['manager_view']['data'][0]
+            for row in result['manager_view']['data'][1:]:
+                manager_view_data.append(dict(zip(columns, row)))
+        
+        recommendations_view_data = []
+        if result['recommendations_view']['data']:
+            columns = result['recommendations_view']['data'][0]
+            for row in result['recommendations_view']['data'][1:]:
+                recommendations_view_data.append(dict(zip(columns, row)))
         
         if not manager_view_data and not recommendations_view_data:
             raise HTTPException(
                 status_code=404,
                 detail=f"No manager roster data found for company {company_id}"
             )
+        
+        # Add SQL queries to logs
+        print(f"Manager View SQL: {result['manager_view']['sql']}")
+        print(f"Recommendations View SQL: {result['recommendations_view']['sql']}")
         
         # Return format based on request
         if format == "table":
@@ -725,6 +742,130 @@ async def get_manager_roster(
         )
 
 
+def get_manager_roster_data(company_id: str, use_mock: bool = True) -> dict:
+    """
+    Get manager roster data either from mock data or from the database.
+    Returns data in format {data: [[column_names], [row1], [row2], ...], sql: 'query_text'}
+    
+    Args:
+        company_id: The company ID to fetch data for
+        use_mock: If True, returns mock data; if False, queries the database
+        
+    Returns:
+        Dict containing data in the specified format and the SQL query used
+    """
+    # Return mock data if requested
+    if use_mock:
+        # Get mock data
+        manager_view_data = get_mock_manager_view_data(company_id)
+        recommendations_view_data = get_mock_recommendations_view_data(company_id)
+        
+        # Extract column names from first row
+        manager_columns = list(manager_view_data[0].keys()) if manager_view_data else []
+        recommendations_columns = list(recommendations_view_data[0].keys()) if recommendations_view_data else []
+        
+        # Extract values
+        manager_values = [list(row.values()) for row in manager_view_data]
+        recommendations_values = [list(row.values()) for row in recommendations_view_data]
+        
+        # Prepare response
+        return {
+            'manager_view': {
+                'data': [manager_columns] + manager_values,
+                'sql': 'Mock data - no SQL query executed'
+            },
+            'recommendations_view': {
+                'data': [recommendations_columns] + recommendations_values,
+                'sql': 'Mock data - no SQL query executed'
+            }
+        }
+    
+    # Otherwise, query the actual database
+    else:
+        try:
+
+            
+            # Define SQL queries
+            manager_sql = """
+            SELECT 
+                company_id,
+                company_name,
+                consultant_name,
+                manager_name,
+                multi_mandate_manager,
+                estimated_market_value,
+                asset_class,
+                universe_name,
+                recommended_product
+            FROM your_manager_roster_table
+            WHERE company_id = %s
+            ORDER BY consultant_name, manager_name
+            """
+            
+            recommendations_sql = """
+            SELECT 
+                company_id,
+                consultant_name,
+                manager_name,
+                multi_mandate_manager,
+                incumbent_product,
+                jpm_recommended_product,
+                asset_class,
+                universe_name,
+                universe_recent_score,
+                num_institutional_clients_for_product,
+                batting_average_comparison_1_year_jpm_vs_competitor,
+                returns_comparison_1_year_jpm_vs_competitor,
+                standard_deviation_comparison_1_year_jpm_vs_competitor,
+                batting_average_comparison_3_year_jpm_vs_competitor,
+                returns_comparison_3_year_jpm_vs_competitor,
+                standard_deviation_comparison_3_year_jpm_vs_competitor,
+                batting_average_comparison_5_year_jpm_vs_competitor,
+                returns_comparison_5_year_jpm_vs_competitor,
+                standard_deviation_comparison_5_year_jpm_vs_competitor
+            FROM your_recommendations_view_table
+            WHERE company_id = %s
+            ORDER BY consultant_name, incumbent_product
+            """
+            
+            # Execute queries
+            manager_results = []
+            manager_columns = []
+            with conn.cursor() as cursor:
+                cursor.execute(manager_sql, (company_id,))
+                manager_columns = [desc[0] for desc in cursor.description]
+                for row in cursor:
+                    manager_results.append(list(row))
+            
+            recommendations_results = []
+            recommendations_columns = []
+            with conn.cursor() as cursor:
+                cursor.execute(recommendations_sql, (company_id,))
+                recommendations_columns = [desc[0] for desc in cursor.description]
+                for row in cursor:
+                    recommendations_results.append(list(row))
+                    
+            # Close the connection
+            conn.close()
+            
+            return {
+                'manager_view': {
+                    'data': [manager_columns] + manager_results,
+                    'sql': manager_sql
+                },
+                'recommendations_view': {
+                    'data': [recommendations_columns] + recommendations_results,
+                    'sql': recommendations_sql
+                }
+            }
+            
+        except Exception as e:
+            print(f"Database error: {str(e)}")
+            # Fall back to mock data in case of database error
+            print("Falling back to mock data")
+            return get_manager_roster_data(company_id, use_mock=True)
+        
+
 def get_mock_manager_view_data(company_id: str) -> List[Dict[str, Any]]:
     """
     Mock data for Manager View.
@@ -737,7 +878,7 @@ def get_mock_manager_view_data(company_id: str) -> List[Dict[str, Any]]:
         consultant_name,
         manager_name,
         multi_mandate_manager,
-        estimated_market_value,
+        est_market_value,
         asset_class,
         universe_name,
         recommended_product
@@ -752,7 +893,7 @@ def get_mock_manager_view_data(company_id: str) -> List[Dict[str, Any]]:
             "consultant_name": "John Smith",
             "manager_name": "BlackRock",
             "multi_mandate_manager": "Y",
-            "estimated_market_value": 5000000.00,
+            "est_market_value": 5000000.00,
             "asset_class": "Equities",
             "universe_name": "Large Cap Growth",
             "recommended_product": "Global Equity Fund"
@@ -763,7 +904,7 @@ def get_mock_manager_view_data(company_id: str) -> List[Dict[str, Any]]:
             "consultant_name": "Jane Doe",
             "manager_name": "Vanguard",
             "multi_mandate_manager": "N",
-            "estimated_market_value": 3500000.00,
+            "est_market_value": 3500000.00,
             "asset_class": "Fixed Income",
             "universe_name": "Investment Grade",
             "recommended_product": "Bond Index Fund"
@@ -774,7 +915,7 @@ def get_mock_manager_view_data(company_id: str) -> List[Dict[str, Any]]:
             "consultant_name": "Robert Johnson",
             "manager_name": "Bridgewater",
             "multi_mandate_manager": "Y",
-            "estimated_market_value": 7500000.00,
+            "est_market_value": 7500000.00,
             "asset_class": "Alternatives",
             "universe_name": "Hedge Funds",
             "recommended_product": "All Weather Portfolio"
@@ -785,7 +926,7 @@ def get_mock_manager_view_data(company_id: str) -> List[Dict[str, Any]]:
             "consultant_name": "John Smith",
             "manager_name": "PIMCO",
             "multi_mandate_manager": "N",
-            "estimated_market_value": 4200000.00,
+            "est_market_value": 4200000.00,
             "asset_class": "Real Estate",
             "universe_name": "Commercial RE",
             "recommended_product": "Real Estate Income Fund"
@@ -796,7 +937,7 @@ def get_mock_manager_view_data(company_id: str) -> List[Dict[str, Any]]:
             "consultant_name": "Sarah Williams",
             "manager_name": "Fidelity",
             "multi_mandate_manager": "Y",
-            "estimated_market_value": 2800000.00,
+            "est_market_value": 2800000.00,
             "asset_class": "Equities",
             "universe_name": "Emerging Markets",
             "recommended_product": "EM Equity Fund"
@@ -842,14 +983,14 @@ def get_mock_recommendations_view_data(company_id: str) -> List[Dict[str, Any]]:
             "universe_recent_score": 4.2,
             "num_institutional_clients_for_product": 3,
             "batting_average_comparison_1_year_jpm_vs_competitor": "0.583333 vs 0.500000",
-            "returns_comparison_1_year_jpm_vs_competitor": "15.892761 vs 11.437912",
-            "standard_deviation_comparison_1_year_jpm_vs_competitor": "18.124566 vs 21.546789",
-            "batting_average_comparison_3_year_jpm_vs_competitor": "0.611111 vs 0.527778",
-            "returns_comparison_3_year_jpm_vs_competitor": "17.629354 vs 14.298766",
-            "standard_deviation_comparison_3_year_jpm_vs_competitor": "16.843219 vs 19.238932",
-            "batting_average_comparison_5_year_jpm_vs_competitor": "0.583333 vs 0.500000",
-            "returns_comparison_5_year_jpm_vs_competitor": "12.489276 vs 9.873254",
-            "standard_deviation_comparison_5_year_jpm_vs_competitor": "17.983265 vs 22.537891"
+            "returns_1_year_jpm_vs_competitor": "15.892761 vs 11.437912",
+            "standard_deviation_1_year_jpm_vs_competitor": "18.124566 vs 21.546789",
+            "batting_average_3_year_jpm_vs_competitor": "0.611111 vs 0.527778",
+            "returns_3_year_jpm_vs_competitor": "17.629354 vs 14.298766",
+            "standard_deviation_3_year_jpm_vs_competitor": "16.843219 vs 19.238932",
+            "batting_average_5_year_jpm_vs_competitor": "0.583333 vs 0.500000",
+            "returns_5_year_jpm_vs_competitor": "12.489276 vs 9.873254",
+            "standard_deviation_5_year_jpm_vs_competitor": "17.983265 vs 22.537891"
         },
         {
             "company_id": company_id,
@@ -862,15 +1003,15 @@ def get_mock_recommendations_view_data(company_id: str) -> List[Dict[str, Any]]:
             "universe_name": "US Small Cap Growth",
             "universe_recent_score": 3.9,
             "num_institutional_clients_for_product": 2,
-            "batting_average_comparison_1_year_jpm_vs_competitor": "0.416667 vs 0.583333",
-            "returns_comparison_1_year_jpm_vs_competitor": "8.345678 vs 12.897654",
-            "standard_deviation_comparison_1_year_jpm_vs_competitor": "26.789543 vs 22.345687",
-            "batting_average_comparison_3_year_jpm_vs_competitor": "0.472222 vs 0.527778",
-            "returns_comparison_3_year_jpm_vs_competitor": "15.234765 vs 18.765432",
-            "standard_deviation_comparison_3_year_jpm_vs_competitor": "24.567321 vs 21.345678",
-            "batting_average_comparison_5_year_jpm_vs_competitor": "0.516667 vs 0.483333",
-            "returns_comparison_5_year_jpm_vs_competitor": "13.456789 vs 12.345678",
-            "standard_deviation_comparison_5_year_jpm_vs_competitor": "25.678912 vs 23.456789"
+            "batting_average_1_year_jpm_vs_competitor": "0.416667 vs 0.583333",
+            "returns_1_year_jpm_vs_competitor": "8.345678 vs 12.897654",
+            "standard_deviation_1_year_jpm_vs_competitor": "26.789543 vs 22.345687",
+            "batting_average_3_year_jpm_vs_competitor": "0.472222 vs 0.527778",
+            "returns_3_year_jpm_vs_competitor": "15.234765 vs 18.765432",
+            "standard_deviation_3_year_jpm_vs_competitor": "24.567321 vs 21.345678",
+            "batting_average_5_year_jpm_vs_competitor": "0.516667 vs 0.483333",
+            "returns_5_year_jpm_vs_competitor": "13.456789 vs 12.345678",
+            "standard_deviation_5_year_jpm_vs_competitor": "25.678912 vs 23.456789"
         },
         {
             "company_id": company_id,
@@ -883,15 +1024,15 @@ def get_mock_recommendations_view_data(company_id: str) -> List[Dict[str, Any]]:
             "universe_name": "US Core Plus Fixed Income",
             "universe_recent_score": 4.1,
             "num_institutional_clients_for_product": 5,
-            "batting_average_comparison_1_year_jpm_vs_competitor": "0.666667 vs 0.416667",
-            "returns_comparison_1_year_jpm_vs_competitor": "6.783456 vs 4.567891",
-            "standard_deviation_comparison_1_year_jpm_vs_competitor": "4.563219 vs 6.789123",
-            "batting_average_comparison_3_year_jpm_vs_competitor": "0.611111 vs 0.444444",
-            "returns_comparison_3_year_jpm_vs_competitor": "5.678912 vs 3.456789",
-            "standard_deviation_comparison_3_year_jpm_vs_competitor": "5.123456 vs 7.891234",
-            "batting_average_comparison_5_year_jpm_vs_competitor": "0.633333 vs 0.466667",
-            "returns_comparison_5_year_jpm_vs_competitor": "4.891234 vs 2.789123",
-            "standard_deviation_comparison_5_year_jpm_vs_competitor": "5.678912 vs 8.912345"
+            "batting_average_1_year_jpm_vs_competitor": "0.666667 vs 0.416667",
+            "returns_1_year_jpm_vs_competitor": "6.783456 vs 4.567891",
+            "standard_deviation_1_year_jpm_vs_competitor": "4.563219 vs 6.789123",
+            "batting_average_3_year_jpm_vs_competitor": "0.611111 vs 0.444444",
+            "returns_3_year_jpm_vs_competitor": "5.678912 vs 3.456789",
+            "standard_deviation_3_year_jpm_vs_competitor": "5.123456 vs 7.891234",
+            "batting_average_5_year_jpm_vs_competitor": "0.633333 vs 0.466667",
+            "returns_5_year_jpm_vs_competitor": "4.891234 vs 2.789123",
+            "standard_deviation_5_year_jpm_vs_competitor": "5.678912 vs 8.912345"
         },
         {
             "company_id": company_id,
@@ -939,7 +1080,7 @@ def export_manager_roster_excel_two_sheets(
                 'consultant_name': 'consultant_name',
                 'manager_name': 'manager_name',
                 'multi_mandate_manager': 'multi_mandate_manager',
-                'estimated_market_value': 'estimated_market_value',
+                'est_market_value': 'est_market_value',
                 'asset_class': 'asset_class',
                 'universe_name': 'universe_name',
                 'recommended_product': 'recommended_product'
@@ -1053,7 +1194,7 @@ def export_manager_roster_excel_two_sheets(
                 len(manager_view_data),
                 len(set(row['manager_name'] for row in manager_view_data)) if manager_view_data else 0,
                 len(set(row['consultant_name'] for row in manager_view_data)) if manager_view_data else 0,
-                sum(row['estimated_market_value'] for row in manager_view_data) if manager_view_data else 0,
+                sum(row['est_market_value'] for row in manager_view_data) if manager_view_data else 0,
                 '',
                 len(recommendations_view_data),
                 len(set(row['jpm_recommended_product'] for row in recommendations_view_data)) if recommendations_view_data else 0,
