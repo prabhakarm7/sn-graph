@@ -118,6 +118,7 @@ def flatten_graph_to_table(
     Flatten graph structure into table rows.
     Shows ALL consultant-company relationships, even if no products associated.
     Products only appear for consultants specified in OWNS.consultant field.
+    FIXED: Shows ALL field consultants, not just one.
     """
     
     # Create lookup maps for fast access
@@ -138,103 +139,193 @@ def flatten_graph_to_table(
         base_row = {
             # Consultant Info
             'Consultant': consultant.get('data', {}).get('name', 'N/A') if consultant else 'N/A',
-            # 'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
+            'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
             'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
-            # 'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A',
-            # 'Consultant Rating': rating or 'N/A',
+            'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A',
+            'Consultant Rating': rating or 'N/A',
             
             # Company Info
             'Company': company.get('data', {}).get('name', 'N/A') if company else 'N/A',
-            # 'Company Channel': company.get('data', {}).get('channel', 'N/A') if company else 'N/A',
-            # 'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A') if company else 'N/A',
+            'Company Channel': company.get('data', {}).get('channel', 'N/A') if company else 'N/A',
+            'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A') if company else 'N/A',
         }
         
         if recommendations_mode:
             # Recommendations mode specific columns
             base_row.update({
                 # Incumbent Product Info
-                'Manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
                 'Incumbent Product': product_info['incumbent'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
-                # 'Incumbent Mandate Status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
-                # 'Incumbent Commitment Value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
+                'Incumbent Manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
+                'Incumbent Mandate Status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
+                'Incumbent Commitment Value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
                 
                 # Recommended Product Info
                 'Recommended Product': product_info['recommended'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
-                # 'Recommended Asset Class': product_info['recommended'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
-                # 'Recommended Universe': product_info['recommended'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
+                'Recommended Asset Class': product_info['recommended'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
+                'Recommended Universe': product_info['recommended'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
                 
                 # BI Recommendation Metrics
-                # 'Opportunity Type': product_info['bi_rel'].get('data', {}).get('opportunity_type', 'N/A') if product_info else 'N/A',
+                'Opportunity Type': product_info['bi_rel'].get('data', {}).get('opportunity_type', 'N/A') if product_info else 'N/A',
                 'BI Returns Summary': product_info['bi_rel'].get('data', {}).get('returns_summary', 'N/A') if product_info else 'N/A',
-                # 'BI Alpha Summary': product_info['bi_rel'].get('data', {}).get('annualised_alpha_summary', 'N/A') if product_info else 'N/A',
-                # 'BI Batting Average': product_info['bi_rel'].get('data', {}).get('batting_average_summary', 'N/A') if product_info else 'N/A',
-                # 'BI Information Ratio': product_info['bi_rel'].get('data', {}).get('information_ratio_summary', 'N/A') if product_info else 'N/A',
+                'BI Alpha Summary': product_info['bi_rel'].get('data', {}).get('annualised_alpha_summary', 'N/A') if product_info else 'N/A',
+                'BI Batting Average': product_info['bi_rel'].get('data', {}).get('batting_average_summary', 'N/A') if product_info else 'N/A',
+                'BI Information Ratio': product_info['bi_rel'].get('data', {}).get('information_ratio_summary', 'N/A') if product_info else 'N/A',
             })
         else:
             # Standard mode specific columns
             base_row.update({
-                # 'Consultant Region': consultant.get('data', {}).get('region', 'N/A') if consultant else 'N/A',
-                # 'Company Advisor': company.get('data', {}).get('pca', 'N/A') if company else 'N/A',
+                'Consultant Region': consultant.get('data', {}).get('region', 'N/A') if consultant else 'N/A',
+                'Company Advisor': company.get('data', {}).get('pca', 'N/A') if company else 'N/A',
                 
                 # Product Info
                 'Product': product_info['product'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
-                # 'Product Asset Class': product_info['product'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
-                # 'Product Universe': product_info['product'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
+                'Product Asset Class': product_info['product'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
+                'Product Universe': product_info['product'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
                 
-                # # Mandate Info
-                # 'Mandate Status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
-                # 'Commitment Value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
-                # 'Mandate Manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
-                # 'Manager Since Date': product_info['owns_rel'].get('data', {}).get('manager_since_date', 'N/A') if product_info else 'N/A',
+                # Mandate Info
+                'Mandate Status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
+                'Commitment Value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
+                'Mandate Manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
+                'Manager Since Date': product_info['owns_rel'].get('data', {}).get('manager_since_date', 'N/A') if product_info else 'N/A',
             })
         
-        # Add debug column if needed
-        # base_row['Has Products'] = has_products_status
+        base_row['Has Products'] = has_products_status
         
         return base_row
-
     
     # Pre-build consultant coverage map: company_id -> list of (consultant, field_consultant, cover_rel)
+    # KEY FIX: This should capture ALL field consultants
     company_coverage_map = {}
     
-    for rel in relationships:
-        if rel.get('data', {}).get('relType') == 'COVERS':
-            company_id = rel['target']
-            covering_entity = nodes_by_id.get(rel['source'])
-            
-            if not covering_entity:
-                continue
-            
-            if company_id not in company_coverage_map:
-                company_coverage_map[company_id] = []
-            
-            if covering_entity.get('type') == 'FIELD_CONSULTANT':
-                # Find parent consultant
-                field_consultant = covering_entity
-                parent_consultant = None
-                
-                for emp_r in relationships:
-                    if (emp_r.get('data', {}).get('relType') == 'EMPLOYS' and 
-                        emp_r['target'] == field_consultant['id']):
-                        parent_consultant = nodes_by_id.get(emp_r['source'])
-                        break
-                
-                company_coverage_map[company_id].append({
-                    'consultant': parent_consultant,
-                    'field_consultant': field_consultant,
-                    'cover_rel': rel,
-                    'path_type': 'FC_PATH'
-                })
-                
-            elif covering_entity.get('type') == 'CONSULTANT':
-                company_coverage_map[company_id].append({
-                    'consultant': covering_entity,
-                    'field_consultant': None,
-                    'cover_rel': rel,
-                    'path_type': 'DIRECT_PATH'
-                })
+    print("=" * 80)
+    print("BUILDING COVERAGE MAP - DETAILED DEBUG")
+    print("=" * 80)
     
-    print(f"Built coverage map for {len(company_coverage_map)} companies")
+    # First, let's understand all COVERS relationships
+    covers_rels = [r for r in relationships if r.get('data', {}).get('relType') == 'COVERS']
+    print(f"\nTotal COVERS relationships found: {len(covers_rels)}")
+    
+    # Group by company to see coverage distribution
+    covers_by_company = {}
+    for rel in covers_rels:
+        company_id = rel['target']
+        if company_id not in covers_by_company:
+            covers_by_company[company_id] = []
+        covers_by_company[company_id].append(rel)
+    
+    print(f"Companies with coverage: {len(covers_by_company)}")
+    
+    # Sample some companies
+    for company_id, rels in list(covers_by_company.items())[:3]:
+        company = nodes_by_id.get(company_id, {})
+        company_name = company.get('data', {}).get('name', 'Unknown')
+        print(f"\n  Company: {company_name} ({company_id})")
+        print(f"  Coverage relationships: {len(rels)}")
+        for rel in rels:
+            covering_entity = nodes_by_id.get(rel['source'])
+            if covering_entity:
+                entity_type = covering_entity.get('type')
+                entity_name = covering_entity.get('data', {}).get('name', 'Unknown')
+                print(f"    - {entity_type}: {entity_name}")
+    
+    # Now build the coverage map with ALL field consultants
+    for rel in relationships:
+        if rel.get('data', {}).get('relType') != 'COVERS':
+            continue
+            
+        company_id = rel['target']
+        covering_entity = nodes_by_id.get(rel['source'])
+        
+        if not covering_entity:
+            print(f"WARNING: Could not find covering entity for relationship: {rel['source']}")
+            continue
+        
+        if company_id not in company_coverage_map:
+            company_coverage_map[company_id] = []
+        
+        entity_type = covering_entity.get('type')
+        
+        if entity_type == 'FIELD_CONSULTANT':
+            # Find parent consultant for this field consultant
+            field_consultant = covering_entity
+            parent_consultant = None
+            
+            # Look for EMPLOYS relationship
+            for emp_r in relationships:
+                if (emp_r.get('data', {}).get('relType') == 'EMPLOYS' and 
+                    emp_r['target'] == field_consultant['id']):
+                    parent_consultant = nodes_by_id.get(emp_r['source'])
+                    if parent_consultant:
+                        print(f"  Found FC path: {parent_consultant.get('data', {}).get('name')} -> "
+                              f"{field_consultant.get('data', {}).get('name')} -> "
+                              f"Company {company_id}")
+                    break
+            
+            if not parent_consultant:
+                print(f"  WARNING: Field consultant {field_consultant.get('data', {}).get('name')} "
+                      f"has no parent consultant")
+            
+            # KEY FIX: Add to list even if we didn't find parent (for debugging)
+            company_coverage_map[company_id].append({
+                'consultant': parent_consultant,
+                'field_consultant': field_consultant,
+                'cover_rel': rel,
+                'path_type': 'FC_PATH'
+            })
+                
+        elif entity_type == 'CONSULTANT':
+            # Direct consultant coverage (no field consultant)
+            print(f"  Found direct path: {covering_entity.get('data', {}).get('name')} -> "
+                  f"Company {company_id}")
+            
+            company_coverage_map[company_id].append({
+                'consultant': covering_entity,
+                'field_consultant': None,
+                'cover_rel': rel,
+                'path_type': 'DIRECT_PATH'
+            })
+        else:
+            print(f"  WARNING: Unknown entity type covering company: {entity_type}")
+    
+    print("\n" + "=" * 80)
+    print("COVERAGE MAP SUMMARY")
+    print("=" * 80)
+    print(f"Total companies with coverage: {len(company_coverage_map)}")
+    
+    # Show distribution of coverage paths
+    fc_path_count = 0
+    direct_path_count = 0
+    multiple_coverage_companies = 0
+    
+    for company_id, coverages in company_coverage_map.items():
+        if len(coverages) > 1:
+            multiple_coverage_companies += 1
+        for coverage in coverages:
+            if coverage['path_type'] == 'FC_PATH':
+                fc_path_count += 1
+            else:
+                direct_path_count += 1
+    
+    print(f"Total FC paths: {fc_path_count}")
+    print(f"Total direct paths: {direct_path_count}")
+    print(f"Companies with multiple coverages: {multiple_coverage_companies}")
+    
+    # Show some examples of multiple coverage
+    print("\nExamples of companies with multiple coverages:")
+    count = 0
+    for company_id, coverages in company_coverage_map.items():
+        if len(coverages) > 1 and count < 3:
+            company = nodes_by_id.get(company_id, {})
+            company_name = company.get('data', {}).get('name', 'Unknown')
+            print(f"\n  Company: {company_name}")
+            print(f"  Coverage paths: {len(coverages)}")
+            for cov in coverages:
+                consultant_name = cov['consultant'].get('data', {}).get('name', 'N/A') if cov['consultant'] else 'N/A'
+                fc_name = cov['field_consultant'].get('data', {}).get('name', 'N/A') if cov['field_consultant'] else 'N/A'
+                print(f"    - {cov['path_type']}: Consultant={consultant_name}, FC={fc_name}")
+            count += 1
+    
+    print("\n" + "=" * 80)
     
     table_rows = []
     
@@ -296,15 +387,22 @@ def flatten_graph_to_table(
         for company_id, coverages in company_coverage_map.items():
             company = nodes_by_id.get(company_id, {})
             
+            print(f"\nProcessing company: {company.get('data', {}).get('name')} with {len(coverages)} coverage(s)")
+            
             for coverage in coverages:
                 consultant = coverage['consultant']
                 field_consultant = coverage['field_consultant']
                 cover_rel = coverage['cover_rel']
                 
                 if not consultant:
+                    print(f"  Skipping coverage - no consultant found")
                     continue
                 
                 consultant_id = consultant.get('data', {}).get('id')
+                consultant_name = consultant.get('data', {}).get('name', 'Unknown')
+                fc_name = field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'Direct'
+                
+                print(f"  Processing: {consultant_name} via {fc_name}")
                 
                 # Check if this consultant has products for this company
                 company_products = company_consultant_products.get(company_id, {})
@@ -313,9 +411,14 @@ def flatten_graph_to_table(
                 
                 # If consultant has specific products, use those
                 if consultant_products:
+                    print(f"    Found {len(consultant_products)} products for this consultant")
                     for product_info in consultant_products:
-                        row_key = f"{company_id}_{consultant_id}_{product_info['incumbent']['id']}_{product_info['recommended']['id']}"
+                        # KEY FIX: Include field consultant ID in the unique key
+                        fc_id = field_consultant['id'] if field_consultant else 'DIRECT'
+                        row_key = f"{company_id}_{consultant_id}_{fc_id}_{product_info['incumbent']['id']}_{product_info['recommended']['id']}"
+                        
                         if row_key in processed_combinations:
+                            print(f"      Skipping duplicate row")
                             continue
                         processed_combinations.add(row_key)
                         
@@ -338,11 +441,16 @@ def flatten_graph_to_table(
                             has_products_status='Yes'
                         )
                         table_rows.append(row)
+                        print(f"      Added row with product")
                 
                 # If no specific products for this consultant
                 else:
-                    row_key = f"{company_id}_{consultant_id}_NO_PRODUCTS"
+                    # KEY FIX: Include field consultant ID in the unique key
+                    fc_id = field_consultant['id'] if field_consultant else 'DIRECT'
+                    row_key = f"{company_id}_{consultant_id}_{fc_id}_NO_PRODUCTS"
+                    
                     if row_key in processed_combinations:
+                        print(f"    Skipping duplicate no-product row")
                         continue
                     processed_combinations.add(row_key)
                     
@@ -358,6 +466,7 @@ def flatten_graph_to_table(
                         has_products_status=status
                     )
                     table_rows.append(row)
+                    print(f"    Added row without product ({status})")
     
     else:
         # Standard mode - same logic but with different product structure
@@ -422,7 +531,10 @@ def flatten_graph_to_table(
                 
                 if consultant_products:
                     for product_info in consultant_products:
-                        row_key = f"{company_id}_{consultant_id}_{product_info['product']['id']}"
+                        # KEY FIX: Include field consultant ID in the unique key
+                        fc_id = field_consultant['id'] if field_consultant else 'DIRECT'
+                        row_key = f"{company_id}_{consultant_id}_{fc_id}_{product_info['product']['id']}"
+                        
                         if row_key in processed_combinations:
                             continue
                         processed_combinations.add(row_key)
@@ -448,7 +560,10 @@ def flatten_graph_to_table(
                         table_rows.append(row)
                 
                 else:
-                    row_key = f"{company_id}_{consultant_id}_NO_PRODUCTS"
+                    # KEY FIX: Include field consultant ID in the unique key
+                    fc_id = field_consultant['id'] if field_consultant else 'DIRECT'
+                    row_key = f"{company_id}_{consultant_id}_{fc_id}_NO_PRODUCTS"
+                    
                     if row_key in processed_combinations:
                         continue
                     processed_combinations.add(row_key)
@@ -466,7 +581,9 @@ def flatten_graph_to_table(
                     )
                     table_rows.append(row)
     
-    print(f"Created {len(table_rows)} export rows (including relationships without products)")
+    print("\n" + "=" * 80)
+    print(f"FINAL: Created {len(table_rows)} export rows")
+    print("=" * 80)
     return table_rows
 
 def export_to_excel(
