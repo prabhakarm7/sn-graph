@@ -118,7 +118,7 @@ def flatten_graph_to_table(
     Flatten graph structure into table rows.
     Shows ALL consultant-company relationships, even if no products associated.
     Products only appear for consultants specified in OWNS.consultant field.
-    FIXED: Shows ALL field consultants, not just one.
+    FIXED: Correctly extracts incumbent manager from INCUMBENT_PRODUCT node, not OWNS relationship.
     """
     
     # Create lookup maps for fast access
@@ -138,97 +138,72 @@ def flatten_graph_to_table(
         
         base_row = {
             # Consultant Info
-            'Consultant': consultant.get('data', {}).get('name', 'N/A') if consultant else 'N/A',
-            'Consultant Advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
-            'Field Consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
-            'Consultant Influence Level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A',
-            'Consultant Rating': rating or 'N/A',
+            'consultant': consultant.get('data', {}).get('name', 'N/A') if consultant else 'N/A',
+            'consultant_advisor': consultant.get('data', {}).get('consultant_advisor', 'N/A') if consultant else 'N/A',
+            'field_consultant': field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'N/A',
+            'consultant_influence_level': cover_rel.get('data', {}).get('level_of_influence', 'N/A') if cover_rel else 'N/A',
+            'consultant_rating': rating or 'N/A',
             
             # Company Info
-            'Company': company.get('data', {}).get('name', 'N/A') if company else 'N/A',
-            'Company Channel': company.get('data', {}).get('channel', 'N/A') if company else 'N/A',
-            'Company Sales Region': company.get('data', {}).get('sales_region', 'N/A') if company else 'N/A',
+            'company': company.get('data', {}).get('name', 'N/A') if company else 'N/A',
+            'company_channel': company.get('data', {}).get('channel', 'N/A') if company else 'N/A',
+            'company_sales_region': company.get('data', {}).get('sales_region', 'N/A') if company else 'N/A',
         }
         
         if recommendations_mode:
+            # FIXED: Extract manager from incumbent node, not OWNS relationship
+            incumbent_node = product_info['incumbent'] if product_info else None
+            incumbent_data = incumbent_node.get('data', {}) if incumbent_node else {}
+            
             # Recommendations mode specific columns
             base_row.update({
-                # Incumbent Product Info
-                'Incumbent Product': product_info['incumbent'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
-                'Incumbent Manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
-                'Incumbent Mandate Status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
-                'Incumbent Commitment Value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
+                # Incumbent Product Info - FIXED: from node, not relationship
+                'incumbent_product': incumbent_data.get('name', 'N/A'),
+                'incumbent_manager': incumbent_data.get('manager', 'N/A'),  # FROM NODE
+                'incumbent_mandate_status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
+                'incumbent_commitment_value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
                 
                 # Recommended Product Info
-                'Recommended Product': product_info['recommended'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
-                'Recommended Asset Class': product_info['recommended'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
-                'Recommended Universe': product_info['recommended'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
+                'recommended_product': product_info['recommended'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
+                'recommended_asset_class': product_info['recommended'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
+                'recommended_universe': product_info['recommended'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
                 
                 # BI Recommendation Metrics
-                'Opportunity Type': product_info['bi_rel'].get('data', {}).get('opportunity_type', 'N/A') if product_info else 'N/A',
-                'BI Returns Summary': product_info['bi_rel'].get('data', {}).get('returns_summary', 'N/A') if product_info else 'N/A',
-                'BI Alpha Summary': product_info['bi_rel'].get('data', {}).get('annualised_alpha_summary', 'N/A') if product_info else 'N/A',
-                'BI Batting Average': product_info['bi_rel'].get('data', {}).get('batting_average_summary', 'N/A') if product_info else 'N/A',
-                'BI Information Ratio': product_info['bi_rel'].get('data', {}).get('information_ratio_summary', 'N/A') if product_info else 'N/A',
+                'opportunity_type': product_info['bi_rel'].get('data', {}).get('opportunity_type', 'N/A') if product_info else 'N/A',
+                'bi_returns_summary': product_info['bi_rel'].get('data', {}).get('returns_summary', 'N/A') if product_info else 'N/A',
+                'bi_alpha_summary': product_info['bi_rel'].get('data', {}).get('annualised_alpha_summary', 'N/A') if product_info else 'N/A',
+                'bi_batting_average': product_info['bi_rel'].get('data', {}).get('batting_average_summary', 'N/A') if product_info else 'N/A',
+                'bi_information_ratio': product_info['bi_rel'].get('data', {}).get('information_ratio_summary', 'N/A') if product_info else 'N/A',
             })
         else:
             # Standard mode specific columns
             base_row.update({
-                'Consultant Region': consultant.get('data', {}).get('region', 'N/A') if consultant else 'N/A',
-                'Company Advisor': company.get('data', {}).get('pca', 'N/A') if company else 'N/A',
+                'consultant_region': consultant.get('data', {}).get('region', 'N/A') if consultant else 'N/A',
+                'company_advisor': company.get('data', {}).get('pca', 'N/A') if company else 'N/A',
                 
                 # Product Info
-                'Product': product_info['product'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
-                'Product Asset Class': product_info['product'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
-                'Product Universe': product_info['product'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
+                'product': product_info['product'].get('data', {}).get('name', 'N/A') if product_info else 'N/A',
+                'product_asset_class': product_info['product'].get('data', {}).get('asset_class', 'N/A') if product_info else 'N/A',
+                'product_universe': product_info['product'].get('data', {}).get('universe_name', 'N/A') if product_info else 'N/A',
                 
                 # Mandate Info
-                'Mandate Status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
-                'Commitment Value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
-                'Mandate Manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
-                'Manager Since Date': product_info['owns_rel'].get('data', {}).get('manager_since_date', 'N/A') if product_info else 'N/A',
+                'mandate_status': product_info['owns_rel'].get('data', {}).get('mandate_status', 'N/A') if product_info else 'N/A',
+                'commitment_value': product_info['owns_rel'].get('data', {}).get('commitment_market_value', 'N/A') if product_info else 'N/A',
+                'mandate_manager': product_info['owns_rel'].get('data', {}).get('manager', 'N/A') if product_info else 'N/A',
+                'manager_since_date': product_info['owns_rel'].get('data', {}).get('manager_since_date', 'N/A') if product_info else 'N/A',
             })
         
-        base_row['Has Products'] = has_products_status
+        base_row['has_products'] = has_products_status
         
         return base_row
     
-    # Pre-build consultant coverage map: company_id -> list of (consultant, field_consultant, cover_rel)
-    # KEY FIX: This should capture ALL field consultants
+    # Pre-build consultant coverage map
     company_coverage_map = {}
     
     print("=" * 80)
-    print("BUILDING COVERAGE MAP - DETAILED DEBUG")
+    print("BUILDING COVERAGE MAP")
     print("=" * 80)
     
-    # First, let's understand all COVERS relationships
-    covers_rels = [r for r in relationships if r.get('data', {}).get('relType') == 'COVERS']
-    print(f"\nTotal COVERS relationships found: {len(covers_rels)}")
-    
-    # Group by company to see coverage distribution
-    covers_by_company = {}
-    for rel in covers_rels:
-        company_id = rel['target']
-        if company_id not in covers_by_company:
-            covers_by_company[company_id] = []
-        covers_by_company[company_id].append(rel)
-    
-    print(f"Companies with coverage: {len(covers_by_company)}")
-    
-    # Sample some companies
-    for company_id, rels in list(covers_by_company.items())[:3]:
-        company = nodes_by_id.get(company_id, {})
-        company_name = company.get('data', {}).get('name', 'Unknown')
-        print(f"\n  Company: {company_name} ({company_id})")
-        print(f"  Coverage relationships: {len(rels)}")
-        for rel in rels:
-            covering_entity = nodes_by_id.get(rel['source'])
-            if covering_entity:
-                entity_type = covering_entity.get('type')
-                entity_name = covering_entity.get('data', {}).get('name', 'Unknown')
-                print(f"    - {entity_type}: {entity_name}")
-    
-    # Now build the coverage map with ALL field consultants
     for rel in relationships:
         if rel.get('data', {}).get('relType') != 'COVERS':
             continue
@@ -237,7 +212,6 @@ def flatten_graph_to_table(
         covering_entity = nodes_by_id.get(rel['source'])
         
         if not covering_entity:
-            print(f"WARNING: Could not find covering entity for relationship: {rel['source']}")
             continue
         
         if company_id not in company_coverage_map:
@@ -246,26 +220,15 @@ def flatten_graph_to_table(
         entity_type = covering_entity.get('type')
         
         if entity_type == 'FIELD_CONSULTANT':
-            # Find parent consultant for this field consultant
             field_consultant = covering_entity
             parent_consultant = None
             
-            # Look for EMPLOYS relationship
             for emp_r in relationships:
                 if (emp_r.get('data', {}).get('relType') == 'EMPLOYS' and 
                     emp_r['target'] == field_consultant['id']):
                     parent_consultant = nodes_by_id.get(emp_r['source'])
-                    if parent_consultant:
-                        print(f"  Found FC path: {parent_consultant.get('data', {}).get('name')} -> "
-                              f"{field_consultant.get('data', {}).get('name')} -> "
-                              f"Company {company_id}")
                     break
             
-            if not parent_consultant:
-                print(f"  WARNING: Field consultant {field_consultant.get('data', {}).get('name')} "
-                      f"has no parent consultant")
-            
-            # KEY FIX: Add to list even if we didn't find parent (for debugging)
             company_coverage_map[company_id].append({
                 'consultant': parent_consultant,
                 'field_consultant': field_consultant,
@@ -274,58 +237,14 @@ def flatten_graph_to_table(
             })
                 
         elif entity_type == 'CONSULTANT':
-            # Direct consultant coverage (no field consultant)
-            print(f"  Found direct path: {covering_entity.get('data', {}).get('name')} -> "
-                  f"Company {company_id}")
-            
             company_coverage_map[company_id].append({
                 'consultant': covering_entity,
                 'field_consultant': None,
                 'cover_rel': rel,
                 'path_type': 'DIRECT_PATH'
             })
-        else:
-            print(f"  WARNING: Unknown entity type covering company: {entity_type}")
     
-    print("\n" + "=" * 80)
-    print("COVERAGE MAP SUMMARY")
-    print("=" * 80)
-    print(f"Total companies with coverage: {len(company_coverage_map)}")
-    
-    # Show distribution of coverage paths
-    fc_path_count = 0
-    direct_path_count = 0
-    multiple_coverage_companies = 0
-    
-    for company_id, coverages in company_coverage_map.items():
-        if len(coverages) > 1:
-            multiple_coverage_companies += 1
-        for coverage in coverages:
-            if coverage['path_type'] == 'FC_PATH':
-                fc_path_count += 1
-            else:
-                direct_path_count += 1
-    
-    print(f"Total FC paths: {fc_path_count}")
-    print(f"Total direct paths: {direct_path_count}")
-    print(f"Companies with multiple coverages: {multiple_coverage_companies}")
-    
-    # Show some examples of multiple coverage
-    print("\nExamples of companies with multiple coverages:")
-    count = 0
-    for company_id, coverages in company_coverage_map.items():
-        if len(coverages) > 1 and count < 3:
-            company = nodes_by_id.get(company_id, {})
-            company_name = company.get('data', {}).get('name', 'Unknown')
-            print(f"\n  Company: {company_name}")
-            print(f"  Coverage paths: {len(coverages)}")
-            for cov in coverages:
-                consultant_name = cov['consultant'].get('data', {}).get('name', 'N/A') if cov['consultant'] else 'N/A'
-                fc_name = cov['field_consultant'].get('data', {}).get('name', 'N/A') if cov['field_consultant'] else 'N/A'
-                print(f"    - {cov['path_type']}: Consultant={consultant_name}, FC={fc_name}")
-            count += 1
-    
-    print("\n" + "=" * 80)
+    print(f"Built coverage map for {len(company_coverage_map)} companies")
     
     table_rows = []
     
@@ -333,53 +252,87 @@ def flatten_graph_to_table(
         # Build a map of company -> consultant -> list of product_info
         company_consultant_products = {}
         
-        for bi_rel in relationships:
-            if bi_rel.get('data', {}).get('relType') != 'BI_RECOMMENDS':
-                continue
-            
-            incumbent_id = bi_rel['source']
-            recommended_id = bi_rel['target']
+        print("\n" + "=" * 80)
+        print("PROCESSING BI_RECOMMENDS RELATIONSHIPS")
+        print("=" * 80)
+        
+        # First, let's debug what we're getting
+        bi_recommends_rels = [r for r in relationships if r.get('data', {}).get('relType') == 'BI_RECOMMENDS']
+        print(f"Total BI_RECOMMENDS relationships: {len(bi_recommends_rels)}")
+        
+        for bi_rel in bi_recommends_rels:
+            incumbent_id = bi_rel['source']  # Source of BI_RECOMMENDS is incumbent
+            recommended_id = bi_rel['target']  # Target is recommended product
             
             incumbent = nodes_by_id.get(incumbent_id, {})
             recommended = nodes_by_id.get(recommended_id, {})
             
-            # Find company that owns incumbent AND get consultant from OWNS relationship
-            for owns_rel in relationships:
-                if owns_rel.get('data', {}).get('relType') == 'OWNS' and owns_rel['target'] == incumbent_id:
-                    company_id = owns_rel['source']
-                    company = nodes_by_id.get(company_id)
+            # Debug incumbent node
+            if incumbent:
+                print(f"\nIncumbent Product: {incumbent.get('data', {}).get('name')}")
+                print(f"  Type: {incumbent.get('type')}")
+                print(f"  Manager from node: {incumbent.get('data', {}).get('manager')}")
+                print(f"  All incumbent data keys: {list(incumbent.get('data', {}).keys())}")
+            
+            # Debug recommended node
+            if recommended:
+                print(f"Recommended Product: {recommended.get('data', {}).get('name')}")
+                print(f"  Asset Class: {recommended.get('data', {}).get('asset_class')}")
+                print(f"  Universe: {recommended.get('data', {}).get('universe_name')}")
+            
+            # Find company that OWNS this incumbent product
+            owns_rel = None
+            company = None
+            
+            for owns_r in relationships:
+                if owns_r.get('data', {}).get('relType') == 'OWNS' and owns_r['target'] == incumbent_id:
+                    company = nodes_by_id.get(owns_r['source'])
+                    owns_rel = owns_r
                     
-                    if not company:
-                        continue
-                    
-                    # Extract consultant ID(s) from OWNS relationship
-                    owns_consultant = owns_rel.get('data', {}).get('consultant')
-                    owns_consultant_ids = []
-                    if owns_consultant:
-                        if isinstance(owns_consultant, list):
-                            owns_consultant_ids = owns_consultant
-                        else:
-                            owns_consultant_ids = [owns_consultant]
-                    
-                    # Store product info by company and consultant
-                    if company_id not in company_consultant_products:
-                        company_consultant_products[company_id] = {}
-                    
-                    # If no specific consultant, mark as "any"
-                    consultant_keys = owns_consultant_ids if owns_consultant_ids else ['__ANY__']
-                    
-                    for cons_key in consultant_keys:
-                        if cons_key not in company_consultant_products[company_id]:
-                            company_consultant_products[company_id][cons_key] = []
-                        
-                        company_consultant_products[company_id][cons_key].append({
-                            'incumbent': incumbent,
-                            'recommended': recommended,
-                            'owns_rel': owns_rel,
-                            'bi_rel': bi_rel
-                        })
+                    if company:
+                        print(f"  Owned by company: {company.get('data', {}).get('name')}")
+                        print(f"  OWNS relationship data: {owns_rel.get('data', {})}")
                     
                     break
+            
+            if not company:
+                print(f"  WARNING: No company found owning incumbent {incumbent_id}")
+                continue
+            
+            company_id = company['id']
+            
+            # Extract consultant ID(s) from OWNS relationship
+            owns_consultant = owns_rel.get('data', {}).get('consultant')
+            owns_consultant_ids = []
+            if owns_consultant:
+                if isinstance(owns_consultant, list):
+                    owns_consultant_ids = owns_consultant
+                else:
+                    owns_consultant_ids = [owns_consultant]
+            
+            print(f"  OWNS.consultant field: {owns_consultant_ids}")
+            
+            # Store product info by company and consultant
+            if company_id not in company_consultant_products:
+                company_consultant_products[company_id] = {}
+            
+            # If no specific consultant, mark as "any"
+            consultant_keys = owns_consultant_ids if owns_consultant_ids else ['__ANY__']
+            
+            for cons_key in consultant_keys:
+                if cons_key not in company_consultant_products[company_id]:
+                    company_consultant_products[company_id][cons_key] = []
+                
+                company_consultant_products[company_id][cons_key].append({
+                    'incumbent': incumbent,
+                    'recommended': recommended,
+                    'owns_rel': owns_rel,
+                    'bi_rel': bi_rel
+                })
+        
+        print("\n" + "=" * 80)
+        print("CREATING EXPORT ROWS")
+        print("=" * 80)
         
         # Now iterate through ALL company-consultant relationships
         processed_combinations = set()
@@ -387,7 +340,7 @@ def flatten_graph_to_table(
         for company_id, coverages in company_coverage_map.items():
             company = nodes_by_id.get(company_id, {})
             
-            print(f"\nProcessing company: {company.get('data', {}).get('name')} with {len(coverages)} coverage(s)")
+            print(f"\nCompany: {company.get('data', {}).get('name')} with {len(coverages)} coverage(s)")
             
             for coverage in coverages:
                 consultant = coverage['consultant']
@@ -395,14 +348,13 @@ def flatten_graph_to_table(
                 cover_rel = coverage['cover_rel']
                 
                 if not consultant:
-                    print(f"  Skipping coverage - no consultant found")
                     continue
                 
                 consultant_id = consultant.get('data', {}).get('id')
                 consultant_name = consultant.get('data', {}).get('name', 'Unknown')
                 fc_name = field_consultant.get('data', {}).get('name', 'N/A') if field_consultant else 'Direct'
                 
-                print(f"  Processing: {consultant_name} via {fc_name}")
+                print(f"  Coverage: {consultant_name} via {fc_name}")
                 
                 # Check if this consultant has products for this company
                 company_products = company_consultant_products.get(company_id, {})
@@ -411,16 +363,21 @@ def flatten_graph_to_table(
                 
                 # If consultant has specific products, use those
                 if consultant_products:
-                    print(f"    Found {len(consultant_products)} products for this consultant")
+                    print(f"    Found {len(consultant_products)} product recommendations")
                     for product_info in consultant_products:
-                        # KEY FIX: Include field consultant ID in the unique key
+                        # Include field consultant ID in the unique key
                         fc_id = field_consultant['id'] if field_consultant else 'DIRECT'
                         row_key = f"{company_id}_{consultant_id}_{fc_id}_{product_info['incumbent']['id']}_{product_info['recommended']['id']}"
                         
                         if row_key in processed_combinations:
-                            print(f"      Skipping duplicate row")
                             continue
                         processed_combinations.add(row_key)
+                        
+                        # Debug what we're adding to the row
+                        print(f"      Adding row:")
+                        print(f"        Incumbent: {product_info['incumbent'].get('data', {}).get('name')}")
+                        print(f"        Manager: {product_info['incumbent'].get('data', {}).get('manager')}")
+                        print(f"        Recommended: {product_info['recommended'].get('data', {}).get('name')}")
                         
                         # Find consultant rating on recommended product
                         rating = None
@@ -441,16 +398,13 @@ def flatten_graph_to_table(
                             has_products_status='Yes'
                         )
                         table_rows.append(row)
-                        print(f"      Added row with product")
                 
                 # If no specific products for this consultant
                 else:
-                    # KEY FIX: Include field consultant ID in the unique key
                     fc_id = field_consultant['id'] if field_consultant else 'DIRECT'
                     row_key = f"{company_id}_{consultant_id}_{fc_id}_NO_PRODUCTS"
                     
                     if row_key in processed_combinations:
-                        print(f"    Skipping duplicate no-product row")
                         continue
                     processed_combinations.add(row_key)
                     
@@ -466,7 +420,7 @@ def flatten_graph_to_table(
                         has_products_status=status
                     )
                     table_rows.append(row)
-                    print(f"    Added row without product ({status})")
+                    print(f"    Added row without products")
     
     else:
         # Standard mode - same logic but with different product structure
@@ -531,7 +485,6 @@ def flatten_graph_to_table(
                 
                 if consultant_products:
                     for product_info in consultant_products:
-                        # KEY FIX: Include field consultant ID in the unique key
                         fc_id = field_consultant['id'] if field_consultant else 'DIRECT'
                         row_key = f"{company_id}_{consultant_id}_{fc_id}_{product_info['product']['id']}"
                         
@@ -560,7 +513,6 @@ def flatten_graph_to_table(
                         table_rows.append(row)
                 
                 else:
-                    # KEY FIX: Include field consultant ID in the unique key
                     fc_id = field_consultant['id'] if field_consultant else 'DIRECT'
                     row_key = f"{company_id}_{consultant_id}_{fc_id}_NO_PRODUCTS"
                     
@@ -585,7 +537,7 @@ def flatten_graph_to_table(
     print(f"FINAL: Created {len(table_rows)} export rows")
     print("=" * 80)
     return table_rows
-
+    
 def export_to_excel(
     data: List[Dict], 
     region: str, 
@@ -603,7 +555,7 @@ def export_to_excel(
         
         # Summary sheet
         summary_data = {
-            'Metric': [
+            'metric': [
                 'Total Rows Exported',
                 'Region',
                 'Mode',
@@ -613,7 +565,7 @@ def export_to_excel(
                 'Filters Applied',
                 'Data Source'
             ],
-            'Value': [
+            'value': [
                 len(data),
                 region,
                 'Recommendations' if rec_mode else 'Standard',
@@ -639,9 +591,9 @@ def export_to_excel(
                     value_str = str(value)
                 
                 filters_data.append({
-                    'Filter': key,
-                    'Value': value_str,
-                    'Count': len(value) if isinstance(value, list) else 1
+                    'filter': key,
+                    'value': value_str,
+                    'count': len(value) if isinstance(value, list) else 1
                 })
             
             filters_df = pd.DataFrame(filters_data)
@@ -713,25 +665,27 @@ async def get_manager_roster(
 ):
     """
     Get manager roster data for a specific company.
+    Returns both manager view and recommendations view.
     
-    Returns:
-    - company_name, company_id, consultant_id, consultant_name, product_name, 
-      manager, estimated_market_value, commitment, asset_class, 
-      1_years, 3_years, 5_years, 10_years
+    Manager View columns:
+    - company_id, company_name, consultant_name, manager_name, 
+      multi_mandate_manager, estimated_market_value, asset_class, 
+      universe_name, recommended_product
     
-    Format options:
-    - table: Returns JSON for display in UI
-    - excel: Downloads as Excel file
-    - csv: Downloads as CSV file
+    Recommendations View columns:
+    - company_id, consultant_name, manager_name, multi_mandate_manager, 
+      incumbent_product, jpm_recommended_product, asset_class, universe_name,
+      universe_recent_score, num_institutional_clients_for_product,
+      batting/returns/std_dev comparisons for 1/3/5 years
     """
     try:
         print(f"📊 Manager Roster request: company={company_id}, format={format}")
         
-        # TODO: Replace with actual Redshift query
-        # For now, using mock data
-        manager_roster_data = get_mock_manager_roster_data(company_id)
+        # Get both views
+        manager_view_data = get_mock_manager_view_data(company_id)
+        recommendations_view_data = get_mock_recommendations_view_data(company_id)
         
-        if not manager_roster_data:
+        if not manager_view_data and not recommendations_view_data:
             raise HTTPException(
                 status_code=404,
                 detail=f"No manager roster data found for company {company_id}"
@@ -742,14 +696,24 @@ async def get_manager_roster(
             return {
                 "success": True,
                 "company_id": company_id,
-                "company_name": manager_roster_data[0].get('company_name', 'Unknown') if manager_roster_data else 'Unknown',
-                "data": manager_roster_data,
-                "row_count": len(manager_roster_data)
+                "company_name": manager_view_data[0].get('company_name', 'Unknown') if manager_view_data else 'Unknown',
+                "manager_view": manager_view_data,
+                "recommendations_view": recommendations_view_data,
+                "manager_view_count": len(manager_view_data),
+                "recommendations_view_count": len(recommendations_view_data)
             }
         elif format == "excel":
-            return export_manager_roster_excel(manager_roster_data, company_id)
-        else:  # csv
-            return export_manager_roster_csv(manager_roster_data, company_id)
+            return export_manager_roster_excel_two_sheets(
+                manager_view_data, 
+                recommendations_view_data,
+                company_id
+            )
+        else:  # csv - will create two files in a zip
+            return export_manager_roster_csv_zip(
+                manager_view_data,
+                recommendations_view_data,
+                company_id
+            )
             
     except HTTPException:
         raise
@@ -761,217 +725,358 @@ async def get_manager_roster(
         )
 
 
-def get_mock_manager_roster_data(company_id: str) -> List[Dict[str, Any]]:
+def get_mock_manager_view_data(company_id: str) -> List[Dict[str, Any]]:
     """
-    Mock data for manager roster with correct column structure.
+    Mock data for Manager View.
     
     TODO: Replace with actual Redshift query:
     
     SELECT 
-        company_name,
         company_id,
-        consultant_id,
+        company_name,
         consultant_name,
-        product_name,
-        manager,
+        manager_name,
+        multi_mandate_manager,
         estimated_market_value,
-        commitment,
         asset_class,
-        1_years,
-        3_years,
-        5_years,
-        10_years
-    FROM your_redshift_table
+        universe_name,
+        recommended_product
+    FROM your_manager_roster_table
     WHERE company_id = '{company_id}'
-    ORDER BY consultant_name, product_name
+    ORDER BY consultant_name, manager_name
     """
-    # Mock data matching the exact schema
     return [
         {
-            "company_name": "Acme Corporation",
             "company_id": company_id,
-            "consultant_id": "CONS_001",
+            "company_name": "Acme Corporation",
             "consultant_name": "John Smith",
-            "product_name": "Global Equity Fund",
-            "manager": "BlackRock",
+            "manager_name": "BlackRock",
+            "multi_mandate_manager": "Y",
             "estimated_market_value": 5000000.00,
-            "commitment": 4800000.00,
             "asset_class": "Equities",
-            "1_years": 8.5,
-            "3_years": 12.3,
-            "5_years": 15.7,
-            "10_years": 18.2
+            "universe_name": "Large Cap Growth",
+            "recommended_product": "Global Equity Fund"
         },
         {
-            "company_name": "Acme Corporation",
             "company_id": company_id,
-            "consultant_id": "CONS_002",
+            "company_name": "Acme Corporation",
             "consultant_name": "Jane Doe",
-            "product_name": "Fixed Income Portfolio",
-            "manager": "Vanguard",
+            "manager_name": "Vanguard",
+            "multi_mandate_manager": "N",
             "estimated_market_value": 3500000.00,
-            "commitment": 3200000.00,
             "asset_class": "Fixed Income",
-            "1_years": 4.2,
-            "3_years": 5.8,
-            "5_years": 6.5,
-            "10_years": 7.1
+            "universe_name": "Investment Grade",
+            "recommended_product": "Bond Index Fund"
         },
         {
-            "company_name": "Acme Corporation",
             "company_id": company_id,
-            "consultant_id": "CONS_003",
+            "company_name": "Acme Corporation",
             "consultant_name": "Robert Johnson",
-            "product_name": "Alternative Investments",
-            "manager": "Bridgewater",
+            "manager_name": "Bridgewater",
+            "multi_mandate_manager": "Y",
             "estimated_market_value": 7500000.00,
-            "commitment": 7000000.00,
             "asset_class": "Alternatives",
-            "1_years": 10.8,
-            "3_years": 14.2,
-            "5_years": 16.9,
-            "10_years": 20.5
+            "universe_name": "Hedge Funds",
+            "recommended_product": "All Weather Portfolio"
         },
         {
-            "company_name": "Acme Corporation",
             "company_id": company_id,
-            "consultant_id": "CONS_001",
+            "company_name": "Acme Corporation",
             "consultant_name": "John Smith",
-            "product_name": "Real Estate Fund",
-            "manager": "PIMCO",
+            "manager_name": "PIMCO",
+            "multi_mandate_manager": "N",
             "estimated_market_value": 4200000.00,
-            "commitment": 4000000.00,
             "asset_class": "Real Estate",
-            "1_years": 6.5,
-            "3_years": 9.2,
-            "5_years": 11.8,
-            "10_years": 14.3
+            "universe_name": "Commercial RE",
+            "recommended_product": "Real Estate Income Fund"
         },
         {
-            "company_name": "Acme Corporation",
             "company_id": company_id,
-            "consultant_id": "CONS_004",
+            "company_name": "Acme Corporation",
             "consultant_name": "Sarah Williams",
-            "product_name": "Emerging Markets Equity",
-            "manager": "Fidelity",
+            "manager_name": "Fidelity",
+            "multi_mandate_manager": "Y",
             "estimated_market_value": 2800000.00,
-            "commitment": 2500000.00,
             "asset_class": "Equities",
-            "1_years": 11.3,
-            "3_years": 15.8,
-            "5_years": 19.2,
-            "10_years": 22.7
+            "universe_name": "Emerging Markets",
+            "recommended_product": "EM Equity Fund"
         }
     ]
 
 
-def export_manager_roster_excel(
-    data: List[Dict[str, Any]], 
+def get_mock_recommendations_view_data(company_id: str) -> List[Dict[str, Any]]:
+    """
+    Mock data for Recommendations View with JPM comparison metrics.
+    """
+    return [
+        {
+            "company_id": company_id,
+            "consultant_name": "Callan",
+            "manager_name": "Peregrine Capital",
+            "multi_mandate_manager": "N",
+            "incumbent_product": "Large Cap Growth",
+            "jpm_recommended_product": "JPM US Large Cap Growth",
+            "asset_class": "Equity",
+            "universe_name": "US Large Cap Growth",
+            "universe_recent_score": 4.7,
+            "num_institutional_clients_for_product": 1,
+            "batting_average_comparison_1_year_jpm_vs_competitor": "0.500000 vs 0.416667",
+            "returns_comparison_1_year_jpm_vs_competitor": "19.532822 vs 15.192780",
+            "standard_deviation_comparison_1_year_jpm_vs_competitor": "23.978012 vs 28.298792",
+            "batting_average_comparison_3_year_jpm_vs_competitor": "0.500000 vs 0.444444",
+            "returns_comparison_3_year_jpm_vs_competitor": "22.516467 vs 25.813981",
+            "standard_deviation_comparison_3_year_jpm_vs_competitor": "22.418930 vs 17.758622",
+            "batting_average_comparison_5_year_jpm_vs_competitor": "0.383333 vs 0.483333",
+            "returns_comparison_5_year_jpm_vs_competitor": "7.373197 vs 17.805176",
+            "standard_deviation_comparison_5_year_jpm_vs_competitor": "23.015094 vs 18.966911"
+        },
+        {
+            "company_id": company_id,
+            "consultant_name": "NEPC",
+            "manager_name": "Wellington",
+            "multi_mandate_manager": "Y",
+            "incumbent_product": "International Equity",
+            "jpm_recommended_product": "JPM EAFE Growth",
+            "asset_class": "Equity",
+            "universe_name": "International Developed",
+            "universe_recent_score": 4.2,
+            "num_institutional_clients_for_product": 3,
+            "batting_average_comparison_1_year_jpm_vs_competitor": "0.583333 vs 0.500000",
+            "returns_comparison_1_year_jpm_vs_competitor": "15.892761 vs 11.437912",
+            "standard_deviation_comparison_1_year_jpm_vs_competitor": "18.124566 vs 21.546789",
+            "batting_average_comparison_3_year_jpm_vs_competitor": "0.611111 vs 0.527778",
+            "returns_comparison_3_year_jpm_vs_competitor": "17.629354 vs 14.298766",
+            "standard_deviation_comparison_3_year_jpm_vs_competitor": "16.843219 vs 19.238932",
+            "batting_average_comparison_5_year_jpm_vs_competitor": "0.583333 vs 0.500000",
+            "returns_comparison_5_year_jpm_vs_competitor": "12.489276 vs 9.873254",
+            "standard_deviation_comparison_5_year_jpm_vs_competitor": "17.983265 vs 22.537891"
+        },
+        {
+            "company_id": company_id,
+            "consultant_name": "Mercer",
+            "manager_name": "T. Rowe Price",
+            "multi_mandate_manager": "N",
+            "incumbent_product": "Small Cap Growth",
+            "jpm_recommended_product": "JPM Small Cap Growth",
+            "asset_class": "Equity",
+            "universe_name": "US Small Cap Growth",
+            "universe_recent_score": 3.9,
+            "num_institutional_clients_for_product": 2,
+            "batting_average_comparison_1_year_jpm_vs_competitor": "0.416667 vs 0.583333",
+            "returns_comparison_1_year_jpm_vs_competitor": "8.345678 vs 12.897654",
+            "standard_deviation_comparison_1_year_jpm_vs_competitor": "26.789543 vs 22.345687",
+            "batting_average_comparison_3_year_jpm_vs_competitor": "0.472222 vs 0.527778",
+            "returns_comparison_3_year_jpm_vs_competitor": "15.234765 vs 18.765432",
+            "standard_deviation_comparison_3_year_jpm_vs_competitor": "24.567321 vs 21.345678",
+            "batting_average_comparison_5_year_jpm_vs_competitor": "0.516667 vs 0.483333",
+            "returns_comparison_5_year_jpm_vs_competitor": "13.456789 vs 12.345678",
+            "standard_deviation_comparison_5_year_jpm_vs_competitor": "25.678912 vs 23.456789"
+        },
+        {
+            "company_id": company_id,
+            "consultant_name": "Aon Hewitt",
+            "manager_name": "MFS",
+            "multi_mandate_manager": "Y",
+            "incumbent_product": "Fixed Income Core Plus",
+            "jpm_recommended_product": "JPM Core Plus Bond",
+            "asset_class": "Fixed Income",
+            "universe_name": "US Core Plus Fixed Income",
+            "universe_recent_score": 4.1,
+            "num_institutional_clients_for_product": 5,
+            "batting_average_comparison_1_year_jpm_vs_competitor": "0.666667 vs 0.416667",
+            "returns_comparison_1_year_jpm_vs_competitor": "6.783456 vs 4.567891",
+            "standard_deviation_comparison_1_year_jpm_vs_competitor": "4.563219 vs 6.789123",
+            "batting_average_comparison_3_year_jpm_vs_competitor": "0.611111 vs 0.444444",
+            "returns_comparison_3_year_jpm_vs_competitor": "5.678912 vs 3.456789",
+            "standard_deviation_comparison_3_year_jpm_vs_competitor": "5.123456 vs 7.891234",
+            "batting_average_comparison_5_year_jpm_vs_competitor": "0.633333 vs 0.466667",
+            "returns_comparison_5_year_jpm_vs_competitor": "4.891234 vs 2.789123",
+            "standard_deviation_comparison_5_year_jpm_vs_competitor": "5.678912 vs 8.912345"
+        },
+        {
+            "company_id": company_id,
+            "consultant_name": "Callan",
+            "manager_name": "AllianceBernstein",
+            "multi_mandate_manager": "N",
+            "incumbent_product": "Global Value",
+            "jpm_recommended_product": "JPM Global Value Equity",
+            "asset_class": "Equity",
+            "universe_name": "Global Value",
+            "universe_recent_score": 3.8,
+            "num_institutional_clients_for_product": 2,
+            "batting_average_comparison_1_year_jpm_vs_competitor": "0.541667 vs 0.458333",
+            "returns_comparison_1_year_jpm_vs_competitor": "10.234567 vs 8.765432",
+            "standard_deviation_comparison_1_year_jpm_vs_competitor": "18.765432 vs 20.987654",
+            "batting_average_comparison_3_year_jpm_vs_competitor": "0.527778 vs 0.472222",
+            "returns_comparison_3_year_jpm_vs_competitor": "12.345678 vs 10.987654",
+            "standard_deviation_comparison_3_year_jpm_vs_competitor": "17.654321 vs 19.876543",
+            "batting_average_comparison_5_year_jpm_vs_competitor": "0.550000 vs 0.450000",
+            "returns_comparison_5_year_jpm_vs_competitor": "11.234567 vs 9.876543",
+            "standard_deviation_comparison_5_year_jpm_vs_competitor": "16.789123 vs 18.567890"
+        }
+    ]
+
+
+def export_manager_roster_excel_two_sheets(
+    manager_view_data: List[Dict[str, Any]],
+    recommendations_view_data: List[Dict[str, Any]],
     company_id: str
 ) -> StreamingResponse:
-    """Export manager roster to Excel with correct column structure."""
-    df = pd.DataFrame(data)
-    
-    # Reorder and rename columns for display
-    column_mapping = {
-        'company_name': 'Company Name',
-        'company_id': 'Company ID',
-        'consultant_id': 'Consultant ID',
-        'consultant_name': 'Consultant Name',
-        'product_name': 'Product Name',
-        'manager': 'Manager',
-        'estimated_market_value': 'Estimated Market Value',
-        'commitment': 'Commitment',
-        'asset_class': 'Asset Class',
-        '1_years': '1 Year Return (%)',
-        '3_years': '3 Year Return (%)',
-        '5_years': '5 Year Return (%)',
-        '10_years': '10 Year Return (%)'
-    }
-    
-    df = df.rename(columns=column_mapping)
+    """Export manager roster with TWO sheets - Manager View and Recommendations View."""
     
     output = io.BytesIO()
+    
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Manager Roster')
         
-        workbook = writer.book
-        worksheet = writer.sheets['Manager Roster']
+        # ============ SHEET 1: MANAGER VIEW ============
+        if manager_view_data:
+            df_manager = pd.DataFrame(manager_view_data)
+            
+            # Rename columns for Manager View
+            manager_columns = {
+                'company_id': 'company_id',
+                'company_name': 'company_name',
+                'consultant_name': 'consultant_name',
+                'manager_name': 'manager_name',
+                'multi_mandate_manager': 'multi_mandate_manager',
+                'estimated_market_value': 'estimated_market_value',
+                'asset_class': 'asset_class',
+                'universe_name': 'universe_name',
+                'recommended_product': 'recommended_product'
+            }
+            
+            df_manager = df_manager.rename(columns=manager_columns)
+            df_manager.to_excel(writer, index=False, sheet_name='Manager View')
+            
+            # Format Manager View sheet
+            ws_manager = writer.sheets['Manager View']
+            
+            # Auto-size columns
+            for column in ws_manager.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws_manager.column_dimensions[column_letter].width = adjusted_width
+            
+            # Format header
+            from openpyxl.styles import Font, PatternFill, Alignment
+            header_fill = PatternFill(start_color='3B82F6', end_color='3B82F6', fill_type='solid')
+            header_font = Font(bold=True, color='FFFFFF')
+            
+            for cell in ws_manager[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Format currency column (F - Estimated Market Value)
+            from openpyxl.styles import numbers
+            for row in range(2, len(manager_view_data) + 2):
+                ws_manager[f'F{row}'].number_format = '$#,##0.00'
         
-        # Auto-size columns
-        for column in worksheet.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                try:
-                    if cell.value:
-                        max_length = max(max_length, len(str(cell.value)))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            worksheet.column_dimensions[column_letter].width = adjusted_width
+        # ============ SHEET 2: RECOMMENDATIONS VIEW ============
+        if recommendations_view_data:
+            df_reco = pd.DataFrame(recommendations_view_data)
+            
+            # Rename columns for Recommendations View - keep lowercase
+            reco_columns = {
+                'company_id': 'company_id',
+                'consultant_name': 'consultant_name',
+                'manager_name': 'manager_name',
+                'multi_mandate_manager': 'multi_mandate_manager',
+                'incumbent_product': 'incumbent_product',
+                'jpm_recommended_product': 'jpm_recommended_product',
+                'asset_class': 'asset_class',
+                'universe_name': 'universe_name',
+                'universe_recent_score': 'universe_recent_score',
+                'num_institutional_clients_for_product': 'num_institutional_clients_for_product',
+                'batting_average_comparison_1_year_jpm_vs_competitor': 'batting_average_comparison_1_year_jpm_vs_competitor',
+                'returns_comparison_1_year_jpm_vs_competitor': 'returns_comparison_1_year_jpm_vs_competitor',
+                'standard_deviation_comparison_1_year_jpm_vs_competitor': 'standard_deviation_comparison_1_year_jpm_vs_competitor',
+                'batting_average_comparison_3_year_jpm_vs_competitor': 'batting_average_comparison_3_year_jpm_vs_competitor',
+                'returns_comparison_3_year_jpm_vs_competitor': 'returns_comparison_3_year_jpm_vs_competitor',
+                'standard_deviation_comparison_3_year_jpm_vs_competitor': 'standard_deviation_comparison_3_year_jpm_vs_competitor',
+                'batting_average_comparison_5_year_jpm_vs_competitor': 'batting_average_comparison_5_year_jpm_vs_competitor',
+                'returns_comparison_5_year_jpm_vs_competitor': 'returns_comparison_5_year_jpm_vs_competitor',
+                'standard_deviation_comparison_5_year_jpm_vs_competitor': 'standard_deviation_comparison_5_year_jpm_vs_competitor'
+            }
+            
+            df_reco = df_reco.rename(columns=reco_columns)
+            df_reco.to_excel(writer, index=False, sheet_name='Recommendations View')
+            
+            # Format Recommendations View sheet
+            ws_reco = writer.sheets['Recommendations View']
+            
+            # Auto-size columns
+            for column in ws_reco.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws_reco.column_dimensions[column_letter].width = adjusted_width
+            
+            # Format header
+            for cell in ws_reco[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
         
-        # Format header row
-        from openpyxl.styles import Font, PatternFill, Alignment
-        header_fill = PatternFill(start_color='3B82F6', end_color='3B82F6', fill_type='solid')
-        header_font = Font(bold=True, color='FFFFFF')
-        
-        for cell in worksheet[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-        
-        # Format currency columns (G and H - Estimated Market Value and Commitment)
-        from openpyxl.styles import numbers
-        for row in range(2, len(data) + 2):
-            worksheet[f'G{row}'].number_format = '$#,##0.00'
-            worksheet[f'H{row}'].number_format = '$#,##0.00'
-        
-        # Format percentage columns (J, K, L, M - Returns)
-        for row in range(2, len(data) + 2):
-            worksheet[f'J{row}'].number_format = '0.0"%"'
-            worksheet[f'K{row}'].number_format = '0.0"%"'
-            worksheet[f'L{row}'].number_format = '0.0"%"'
-            worksheet[f'M{row}'].number_format = '0.0"%"'
-        
-        # Add summary sheet
+        # ============ SHEET 3: SUMMARY ============
         summary_data = {
-            'Metric': [
-                'Total Records',
-                'Unique Consultants',
-                'Unique Products',
-                'Total Estimated Market Value',
-                'Total Commitment',
-                'Company Name',
-                'Company ID'
+            'metric': [
+                'company_name',
+                'company_id',
+                '---',
+                'manager_view_records',
+                'unique_managers',
+                'unique_consultants',
+                'total_market_value',
+                '---',
+                'recommendations_view_records',
+                'jpm_recommended_products',
+                'unique_consultants_recommendations'
             ],
-            'Value': [
-                len(data),
-                len(set(row['consultant_name'] for row in data)),
-                len(set(row['product_name'] for row in data)),
-                sum(row['estimated_market_value'] for row in data),
-                sum(row['commitment'] for row in data),
-                data[0]['company_name'] if data else 'N/A',
-                company_id
+            'value': [
+                manager_view_data[0]['company_name'] if manager_view_data else 'N/A',
+                company_id,
+                '',
+                len(manager_view_data),
+                len(set(row['manager_name'] for row in manager_view_data)) if manager_view_data else 0,
+                len(set(row['consultant_name'] for row in manager_view_data)) if manager_view_data else 0,
+                sum(row['estimated_market_value'] for row in manager_view_data) if manager_view_data else 0,
+                '',
+                len(recommendations_view_data),
+                len(set(row['jpm_recommended_product'] for row in recommendations_view_data)) if recommendations_view_data else 0,
+                len(set(row['consultant_name'] for row in recommendations_view_data)) if recommendations_view_data else 0,
             ]
         }
+        
         summary_df = pd.DataFrame(summary_data)
         summary_df.to_excel(writer, index=False, sheet_name='Summary')
         
         # Format summary sheet
-        summary_ws = writer.sheets['Summary']
-        for cell in summary_ws[1]:
+        ws_summary = writer.sheets['Summary']
+        for cell in ws_summary[1]:
             cell.fill = header_fill
             cell.font = header_font
         
         # Format currency in summary
-        summary_ws['B5'].number_format = '$#,##0.00'
-        summary_ws['B6'].number_format = '$#,##0.00'
+        ws_summary['B7'].number_format = '$#,##0.00'
     
     output.seek(0)
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    company_name_clean = data[0]['company_name'].replace(' ', '_') if data else 'company'
+    company_name_clean = manager_view_data[0]['company_name'].replace(' ', '_') if manager_view_data else 'company'
     filename = f"manager_roster_{company_name_clean}_{timestamp}.xlsx"
     
     return StreamingResponse(
@@ -979,114 +1084,75 @@ def export_manager_roster_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f"attachment; filename={filename}",
-            "X-Export-Rows": str(len(data)),
-            "X-Company-Name": data[0]['company_name'] if data else 'Unknown'
+            "X-Export-Manager-Rows": str(len(manager_view_data)),
+            "X-Export-Reco-Rows": str(len(recommendations_view_data)),
+            "X-Company-Name": manager_view_data[0]['company_name'] if manager_view_data else 'Unknown'
         }
     )
 
 
-def export_manager_roster_csv(
-    data: List[Dict[str, Any]], 
+def export_manager_roster_csv_zip(
+    manager_view_data: List[Dict[str, Any]],
+    recommendations_view_data: List[Dict[str, Any]],
     company_id: str
 ) -> StreamingResponse:
-    """Export manager roster to CSV with correct column structure."""
-    df = pd.DataFrame(data)
+    """Export both views as CSV files in a ZIP."""
+    import zipfile
     
-    # Reorder and rename columns
-    column_mapping = {
-        'company_name': 'Company Name',
-        'company_id': 'Company ID',
-        'consultant_id': 'Consultant ID',
-        'consultant_name': 'Consultant Name',
-        'product_name': 'Product Name',
-        'manager': 'Manager',
-        'estimated_market_value': 'Estimated Market Value',
-        'commitment': 'Commitment',
-        'asset_class': 'Asset Class',
-        '1_years': '1 Year Return (%)',
-        '3_years': '3 Year Return (%)',
-        '5_years': '5 Year Return (%)',
-        '10_years': '10 Year Return (%)'
-    }
+    zip_buffer = io.BytesIO()
     
-    df = df.rename(columns=column_mapping)
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        company_name_clean = manager_view_data[0]['company_name'].replace(' ', '_') if manager_view_data else 'company'
+        
+        # Manager View CSV
+        if manager_view_data:
+            df_manager = pd.DataFrame(manager_view_data)
+            
+            csv_manager = df_manager.to_csv(index=False)
+            zip_file.writestr(
+                f"manager_view_{company_name_clean}_{timestamp}.csv",
+                csv_manager
+            )
+        
+        # Recommendations View CSV
+        if recommendations_view_data:
+            df_reco = pd.DataFrame(recommendations_view_data)
+            
+            csv_reco = df_reco.to_csv(index=False)
+            zip_file.writestr(
+                f"recommendations_view_{company_name_clean}_{timestamp}.csv",
+                csv_reco
+            )
     
-    output = io.StringIO()
-    df.to_csv(output, index=False)
-    output.seek(0)
+    zip_buffer.seek(0)
     
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    company_name_clean = data[0]['company_name'].replace(' ', '_') if data else 'company'
-    filename = f"manager_roster_{company_name_clean}_{timestamp}.csv"
+    filename = f"manager_roster_{company_name_clean}_{timestamp}.zip"
     
     return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
+        zip_buffer,
+        media_type="application/zip",
         headers={
             "Content-Disposition": f"attachment; filename={filename}",
-            "X-Export-Rows": str(len(data)),
-            "X-Company-Name": data[0]['company_name'] if data else 'Unknown'
+            "X-Export-Manager-Rows": str(len(manager_view_data)),
+            "X-Export-Reco-Rows": str(len(recommendations_view_data))
         }
     )
 
-# def get_manager_roster_from_redshift(company_id: str) -> List[Dict[str, Any]]:
-#     """
-#     Execute Redshift query to get manager roster data.
-#     Replace with your actual Redshift connection logic.
-#     """
-#     import psycopg2
-#     from psycopg2.extras import RealDictCursor
-    
-#     # Your Redshift connection parameters
-#     conn = psycopg2.connect(
-#         host='your-redshift-cluster.region.redshift.amazonaws.com',
-#         port=5439,
-#         database='your_database',
-#         user='your_username',
-#         password='your_password'
-#     )
-    
-#     query = """
-#     SELECT 
-#         company_name,
-#         company_id,
-#         consultant_id,
-#         consultant_name,
-#         product_name,
-#         manager,
-#         estimated_market_value,
-#         commitment,
-#         asset_class,
-#         "1_years",
-#         "3_years",
-#         "5_years",
-#         "10_years"
-#     FROM your_schema.manager_roster_table
-#     WHERE company_id = %s
-#     ORDER BY consultant_name, product_name
-#     """
-    
-#     try:
-#         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-#             cursor.execute(query, (company_id,))
-#             results = cursor.fetchall()
-#             return [dict(row) for row in results]
-#     finally:
-#         conn.close()
-
-@export_router.get("/region/{region}/export-health")
-async def export_health_check(region: str):
+@export_router.get("/export-health")
+async def export_health_check():
     """Health check for export functionality."""
     return {
         "status": "healthy",
-        "region": region,
         "supported_formats": ["excel", "csv"],
         "features": [
-            "Multi-sheet Excel export",
-            "Auto-sized columns",
-            "Summary statistics",
-            "Applied filters documentation",
-            "Consistent with graph rendering"
+            "multi-sheet excel export",
+            "auto-sized columns",
+            "summary statistics", 
+            "applied filters documentation",
+            "consistent with graph rendering",
+            "manager roster with tabs",
+            "recommendations comparison metrics"
         ],
         "max_export_rows": 10000
     }
