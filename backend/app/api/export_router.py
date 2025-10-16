@@ -1194,7 +1194,7 @@ def export_manager_roster_excel_two_sheets(
                 len(manager_view_data),
                 len(set(row['manager_name'] for row in manager_view_data)) if manager_view_data else 0,
                 len(set(row['consultant_name'] for row in manager_view_data)) if manager_view_data else 0,
-                sum(row['est_market_value'] for row in manager_view_data) if manager_view_data else 0,
+                sum(float(row.get('est_market_value', 0) or 0) for row in manager_view_data) if manager_view_data else 0,
                 '',
                 len(recommendations_view_data),
                 len(set(row['jpm_recommended_product'] for row in recommendations_view_data)) if recommendations_view_data else 0,
