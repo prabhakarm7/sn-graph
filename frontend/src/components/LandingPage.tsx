@@ -165,7 +165,9 @@ const LandingPage: React.FC = () => {
         </Tooltip>
       </Box>
 
-    
+      {/*   Chase Branding - Top Left */}
+      
+
       <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, py: { xs: 6, md: 10 } }}>
         <Fade in timeout={700}>
           <Box
@@ -179,6 +181,22 @@ const LandingPage: React.FC = () => {
             {/* Left: Welcome Section */}
             <Box>
               <Typography
+                variant="h6"
+                sx={{
+                  fontFamily: '"Playfair Display", Georgia, serif',
+                  fontWeight: 400,
+                  fontSize: { xs: '1.25rem', md: '1.5rem' },
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.01em',
+                  color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(15, 23, 42, 0.7)',
+                  mb: 1,
+                  transition: 'color 0.3s ease'
+                }}
+              >
+                Welcome, Danius
+              </Typography>
+
+              <Typography
                 variant="h1"
                 sx={{
                   fontFamily: '"Playfair Display", Georgia, serif',
@@ -187,11 +205,11 @@ const LandingPage: React.FC = () => {
                   lineHeight: 1,
                   letterSpacing: '-0.02em',
                   color: isDarkMode ? '#ffffff' : '#0f172a',
-                  mb: 3,
+                  mb: 1.5,
                   transition: 'color 0.3s ease'
                 }}
               >
-                Welcome.
+                SMART NETWORK
               </Typography>
 
               <Box
@@ -428,7 +446,7 @@ const LandingPage: React.FC = () => {
               gap: 2
             }}
           >
-            {/* Left: JPMorgan Chase & Co. */}
+            {/* Left:   Chase & Co. */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography
                 variant="caption"
@@ -440,7 +458,7 @@ const LandingPage: React.FC = () => {
                   fontWeight: 500
                 }}
               >
-                © 2025 JPMorgan Chase & Co.
+                © 2025   Chase & Co.
               </Typography>
             </Box>
 
