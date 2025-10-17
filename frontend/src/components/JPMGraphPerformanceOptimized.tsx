@@ -15,6 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { Box, Drawer, Tabs, Tab, Typography, CircularProgress, Alert } from '@mui/material';
 import { Psychology, FilterList as FilterIcon } from '@mui/icons-material';
+import { useLocation } from 'react-router-dom';
 
 // Import components
 import { nodeTypes, edgeTypes } from './components/NodeComponents';
@@ -34,6 +35,12 @@ import { enhancedLayoutWithDagre } from './utils/graphLayout';
 // Move nodeTypes and edgeTypes outside component to prevent recreation
 const STABLE_NODE_TYPES = nodeTypes;
 const STABLE_EDGE_TYPES = edgeTypes;
+
+interface LocationState {
+  fromLanding?: boolean;
+  mode?: 'standard' | 'recommendations';
+  tab?: 'filters' | 'queries';
+}
 
 // Inner component that uses ReactFlow hooks
 function PerformanceOptimizedGraphComponent() {
@@ -77,7 +84,26 @@ function PerformanceOptimizedGraphComponent() {
     dataSource,
     currentMode
   } = usePerformanceOptimizedBackendData();
-
+  const location = useLocation<LocationState>();
+  // Handle navigation from landing page
+  useEffect(() => {
+    if (location.state?.fromLanding) {
+      const { mode, tab } = location.state;
+      
+      // Set recommendations mode
+      if (mode === 'recommendations') {
+        setRecommendationsMode(true);
+        handleRecommendationsModeChange('recommendations');
+      }
+      
+      // Set active tab
+      if (tab === 'queries') {
+        setTabValue(0); // Smart Queries tab
+      } else {
+        setTabValue(1); // Filters tab
+      }
+    }
+  }, [location]);
   // Sync local state with hook's mode detection
   useEffect(() => {
     setRecommendationsMode(isRecommendationsMode);

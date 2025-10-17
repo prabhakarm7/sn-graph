@@ -1,21 +1,23 @@
 import React from 'react';
-import TextToCypherDashboard from './components/TextToCypherDashboard';
-import TextToCypherDashboardOld from './components/TextToCypherDashboardOld';
-import ConsultingDashboard from './components/ConsultingDashboard';
-import JPMNetworkDashboard from './components/JPMNetworkDashboard';
-import ConsultantNetworkGraph from './components/ConsultantNetworkGraph';
-import JPMGraphPreview from './components/JPMGraphPreview';
-import JPMGraphPreviewEx from './components/JPMGraphPreviewEx';
-import JPMGraphPreviewWithFilters from './components/JPMGraphPreviewWithFilters';
-import JPMGraphComplete from './components/JPMGraphComplete';
+import { BrowserRouter as Router, Switch, Route, Redirect } from 'react-router-dom';
+import LandingPage from './components/LandingPage';
 import JPMGraphPerformanceOptimized from './components/JPMGraphPerformanceOptimized';
-import ClientAdvisorFlowDiagram from './components/TechnicalArchitecture';
-
 
 function App() {
   return (
     <div className="App">
-      <JPMGraphPerformanceOptimized />
+      <Router>
+        <Switch>
+          {/* Landing page as default route */}
+          <Route exact path="/" component={LandingPage} />
+          
+          {/* Main graph page */}
+          <Route path="/graph" component={JPMGraphPerformanceOptimized} />
+          
+          {/* Redirect any unknown routes to landing page */}
+          <Redirect to="/" />
+        </Switch>
+      </Router>
     </div>
   );
 }
