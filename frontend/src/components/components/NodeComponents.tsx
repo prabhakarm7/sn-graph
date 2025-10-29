@@ -932,6 +932,29 @@ export const CustomEdge = React.memo(function CustomEdge({
     return { bg: APP_THEME_COLORS.surface, text: 'white' };
   };
 
+  // Tooltip content for hover
+  const getTooltipContent = () => {
+    const parts = [];
+    
+    if (relType) {
+      parts.push(`Relationship: ${relType}`);
+    }
+    
+    if (mandateStatus) {
+      parts.push(`Status: ${mandateStatus}`);
+    }
+    
+    if (levelOfInfluence) {
+      parts.push(`Influence: ${levelOfInfluence}`);
+    }
+    
+    if (rating) {
+      parts.push(`Rating: ${rating}`);
+    }
+    
+    return parts.join(' | ');
+  };
+
   return (
     <g>
       <defs>
@@ -966,7 +989,9 @@ export const CustomEdge = React.memo(function CustomEdge({
         style={{ cursor: 'pointer' }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-      />
+      >
+        <title>{getTooltipContent()}</title>
+      </path>
       
       {/* Visible edge path with enhanced visibility */}
       <path 
@@ -1003,80 +1028,66 @@ export const CustomEdge = React.memo(function CustomEdge({
         }}
       />
       
-      {/* Edge label - always visible for important relationships */}
-      {getLabelText() && (
+      {/* Tooltip label on hover only */}
+      {isHovered && getLabelText() && (
         <g>
           {/* Enhanced label background with dynamic sizing */}
           <rect
-            x={midX - (relType === 'BI_RECOMMENDS' ? 50 : 35)}
-            y={midY - (relType === 'BI_RECOMMENDS' ? 15 : 12)}
-            width={relType === 'BI_RECOMMENDS' ? 100 : 70}
-            height={relType === 'BI_RECOMMENDS' ? 30 : 30}
+            x={midX - (relType === 'BI_RECOMMENDS' ? 55 : 40)}
+            y={midY - 18}
+            width={relType === 'BI_RECOMMENDS' ? 110 : 80}
+            height={36}
             fill={getLabelColor().bg}
-            rx={relType === 'BI_RECOMMENDS' ? 15 : 10}
+            rx={12}
             style={{ 
-              opacity: isHovered ? 1 : 0.9,
-              transition: 'opacity 0.3s ease',
-              filter: isHovered ? 'drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3))' : 'none'
+              opacity: 0.95,
+              filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))',
+              animation: 'fadeIn 0.2s ease-in'
             }}
           />
           
-          {/* Border for mandate status labels and BI_RECOMMENDS */}
-          {((relType === 'OWNS' && mandateStatus) || relType === 'BI_RECOMMENDS') && (
-            <rect
-              x={midX - (relType === 'BI_RECOMMENDS' ? 50 : 35)}
-              y={midY - (relType === 'BI_RECOMMENDS' ? 15 : 12)}
-              width={relType === 'BI_RECOMMENDS' ? 100 : 70}
-              height={relType === 'BI_RECOMMENDS' ? 30 : 30}
-              fill="none"
-              stroke="rgba(255, 255, 255, 0.3)"
-              strokeWidth="1"
-              rx={relType === 'BI_RECOMMENDS' ? 15 : 10}
-            />
-          )}
+          {/* Border for tooltip */}
+          <rect
+            x={midX - (relType === 'BI_RECOMMENDS' ? 55 : 40)}
+            y={midY - 18}
+            width={relType === 'BI_RECOMMENDS' ? 110 : 80}
+            height={36}
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.4)"
+            strokeWidth="1.5"
+            rx={12}
+          />
           
-          {/* Enhanced text with better positioning for BI_RECOMMENDS */}
+          {/* Tooltip text */}
           <text 
             x={midX} 
-            y={midY + (relType === 'BI_RECOMMENDS' ? 5 : 2)} 
+            y={midY + 6} 
             textAnchor="middle" 
             style={{ 
-              fontSize: relType === 'BI_RECOMMENDS' ? 14 : (isHovered ? 12 : 10), 
+              fontSize: relType === 'BI_RECOMMENDS' ? 13 : 11, 
               fill: getLabelColor().text, 
-              fontWeight: ((relType === 'OWNS' && mandateStatus) || relType === 'BI_RECOMMENDS') ? 'bold' : isHovered ? 'bold' : 'normal',
+              fontWeight: 'bold',
               pointerEvents: 'none',
-              transition: 'all 0.3s ease',
-              letterSpacing: relType === 'BI_RECOMMENDS' ? '0.5px' : 'normal'
+              letterSpacing: '0.3px'
             }}
           >
             {getLabelText()}
           </text>
           
-          {/* Optional: Add a small icon for BI_RECOMMENDS */}
+          {/* Icon for BI_RECOMMENDS */}
           {relType === 'BI_RECOMMENDS' && (
-            <g>
-              <circle
-                cx={midX + 35}
-                cy={midY}
-                r="8"
-                fill="rgba(255, 255, 255, 0.2)"
-                stroke="rgba(255, 255, 255, 0.4)"
-                strokeWidth="1"
-              />
-              <text
-                x={midX + 35}
-                y={midY + 3}
-                textAnchor="middle"
-                style={{
-                  fontSize: 10,
-                  fill: 'white',
-                  fontWeight: 'bold',
-                  pointerEvents: 'none'
-                }}
-              >
-                ✨
-              </text>
-            </g>
+            <text
+              x={midX - 40}
+              y={midY + 5}
+              textAnchor="middle"
+              style={{
+                fontSize: 16,
+                fill: 'white',
+                pointerEvents: 'none'
+              }}
+            >
+              ✨
+            </text>
           )}
         </g>
       )}

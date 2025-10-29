@@ -1,5 +1,5 @@
 // components/ManagerRosterButton.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   IconButton, 
   Tooltip, 
@@ -28,7 +28,8 @@ import {
   Card,
   CardContent,
   Tabs,
-  Tab
+  Tab,
+  Collapse
 } from '@mui/material';
 
 import { 
@@ -43,7 +44,9 @@ import {
   AccountBalance,
   ShowChart,
   Recommend,
-  CompareArrows
+  CompareArrows,
+  ExpandMore,
+  ExpandLess
 } from '@mui/icons-material';
 
 // Define interfaces for both data types with lowercase fields
@@ -111,8 +114,21 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
   const [showSuccessSnackbar, setShowSuccessSnackbar] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [activeTab, setActiveTab] = useState(0);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
   const menuOpen = Boolean(anchorEl);
+
+  const toggleRowExpansion = (index: number) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -124,6 +140,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
+    setExpandedRows(new Set()); // Reset expanded rows when switching tabs
   };
 
   const fetchManagerRoster = async (): Promise<ManagerRosterResponse> => {
@@ -230,16 +247,22 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
     }).format(value);
   };
 
-  const formatPercentage = (value: number) => {
-    return `${value.toFixed(1)}%`;
-  };
-
-  const getReturnColor = (value: number) => {
-    if (value >= 15) return '#10b981';
-    if (value >= 10) return '#3b82f6';
-    if (value >= 5) return '#f59e0b';
-    return '#ef4444';
-  };
+  // Sort manager data by recommended_product (non-null values first)
+  const sortedManagerData = useMemo(() => {
+    return [...managerData].sort((a, b) => {
+      // If both have recommended_product or both don't, maintain original order
+      if ((a.recommended_product && b.recommended_product) || 
+          (!a.recommended_product && !b.recommended_product)) {
+        return 0;
+      }
+      // If a has recommended_product and b doesn't, a comes first
+      if (a.recommended_product && !b.recommended_product) {
+        return -1;
+      }
+      // If b has recommended_product and a doesn't, b comes first
+      return 1;
+    });
+  }, [managerData]);
 
   // Summary card for Manager View
   const renderManagerViewSummary = () => {
@@ -418,7 +441,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
     );
   };
 
-  // Manager View Table
+  // Manager View Table - Enhanced with minimal chips
   const renderManagerViewTable = () => (
     <TableContainer 
       component={Paper} 
@@ -437,7 +460,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.75rem'
             }}>
-              consultant_name
+              Consultant Name
             </TableCell>
             <TableCell sx={{ 
               bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
@@ -445,7 +468,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.75rem'
             }}>
-              manager_name
+              Manager Name
             </TableCell>
             <TableCell sx={{ 
               bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
@@ -453,15 +476,15 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.75rem'
             }}>
-              multi_mandate_manager
+              Multi-Mandate
             </TableCell>
             <TableCell align="right" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246,0.1)',
+              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
               color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
               fontWeight: 'bold',
               fontSize: '0.75rem'
             }}>
-              est_market_value
+              Est. Market Value
             </TableCell>
             <TableCell sx={{ 
               bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
@@ -469,7 +492,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.75rem'
             }}>
-              asset_class
+              Asset Class
             </TableCell>
             <TableCell sx={{ 
               bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
@@ -477,7 +500,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.75rem'
             }}>
-              universe_name
+              Universe Name
             </TableCell>
             <TableCell sx={{ 
               bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
@@ -485,12 +508,12 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               fontWeight: 'bold',
               fontSize: '0.75rem'
             }}>
-              recommended_product
+              Recommended Product
             </TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {managerData.map((row, index) => (
+          {sortedManagerData.map((row, index) => (
             <TableRow 
               key={index}
               sx={{ 
@@ -501,7 +524,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
             >
               <TableCell sx={{ 
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
+                fontSize: '0.85rem'
               }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <Person sx={{ fontSize: '0.9rem', color: '#3b82f6' }} />
@@ -510,18 +533,10 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
               </TableCell>
               <TableCell sx={{ 
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
+                fontSize: '0.85rem',
+                fontWeight: 500
               }}>
-                <Chip 
-                  label={row.manager_name}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(99, 102, 241, 0.2)',
-                    color: '#6366f1',
-                    fontSize: '0.7rem',
-                    height: 20
-                  }}
-                />
+                {row.manager_name}
               </TableCell>
               <TableCell sx={{ 
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
@@ -536,7 +551,8 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                       : 'rgba(239, 68, 68, 0.2)',
                     color: row.multi_mandate_manager === 'Y' ? '#10b981' : '#ef4444',
                     fontSize: '0.7rem',
-                    height: 20
+                    height: 20,
+                    fontWeight: 'bold'
                   }}
                 />
               </TableCell>
@@ -544,53 +560,47 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
                 fontFamily: 'monospace',
                 fontWeight: 'medium',
-                fontSize: '0.8rem'
+                fontSize: '0.85rem'
               }}>
                 {formatCurrency(row.est_market_value)}
               </TableCell>
               <TableCell sx={{ 
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
+                fontSize: '0.85rem'
               }}>
-                <Chip 
-                  label={row.asset_class}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(16, 185, 129, 0.2)',
-                    color: '#10b981',
-                    fontSize: '0.7rem',
-                    height: 20
-                  }}
-                />
+                {row.asset_class}
               </TableCell>
               <TableCell sx={{ 
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
+                fontSize: '0.85rem',
                 maxWidth: 200
               }}>
                 {row.universe_name}
               </TableCell>
               <TableCell sx={{ 
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
+                fontSize: '0.85rem',
+                fontWeight: row.recommended_product ? 600 : 400
               }}>
                 {row.recommended_product ? (
                   <Chip 
+                    icon={<Recommend sx={{ fontSize: '0.85rem' }} />}
                     label={row.recommended_product}
                     size="small"
-                    icon={<Recommend sx={{ fontSize: '0.8rem' }} />}
                     sx={{
-                      bgcolor: 'rgba(245, 158, 11, 0.2)',
-                      color: '#f59e0b',
-                      fontSize: '0.7rem',
-                      height: 20,
+                      bgcolor: 'rgba(14, 165, 233, 0.2)',
+                      color: '#0ea5e9',
+                      fontSize: '0.75rem',
+                      height: 22,
+                      fontWeight: 'bold',
+                      border: '1px solid rgba(14, 165, 233, 0.4)',
                       '& .MuiChip-icon': {
-                        color: '#f59e0b'
+                        color: '#0ea5e9'
                       }
                     }}
                   />
                 ) : (
-                  'N/A'
+                  <span style={{ opacity: 0.5 }}>N/A</span>
                 )}
               </TableCell>
             </TableRow>
@@ -600,542 +610,525 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
     </TableContainer>
   );
 
-  // Recommendations View Table
-  const renderRecommendationsViewTable = () => (
-    <TableContainer 
-      component={Paper} 
-      sx={{ 
-        bgcolor: isDarkTheme ? 'rgba(30, 30, 30, 0.5)' : 'rgba(255, 255, 255, 0.5)',
-        maxHeight: 500,
-        border: `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)'}`,
-        overflowX: 'auto'
-      }}
-    >
-      <Table stickyHeader size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              consultant_name
-            </TableCell>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              manager_name
-            </TableCell>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              multi_mandate_manager
-            </TableCell>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              incumbent_product
-            </TableCell>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              jpm_recommended_product
-            </TableCell>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246,0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              asset_class
-            </TableCell>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              universe_name
-            </TableCell>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              universe_recent_score
-            </TableCell>
-            <TableCell sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem'
-            }}>
-              num_institutional_clients_for_product
-            </TableCell>
-            {/* Performance metrics - 1 Year */}
-            <TableCell colSpan={3} align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(245, 158, 11, 0.2)' : 'rgba(245, 158, 11, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem',
-              borderLeft: '2px solid rgba(245, 158, 11, 0.3)',
-              borderRight: '2px solid rgba(245, 158, 11, 0.3)'
-            }}>
-              1 Year Comparison
-            </TableCell>
-            {/* Performance metrics - 3 Year */}
-            <TableCell colSpan={3} align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem',
-              borderLeft: '2px solid rgba(99, 102, 241, 0.3)',
-              borderRight: '2px solid rgba(99, 102, 241, 0.3)'
-            }}>
-              3 Year Comparison
-            </TableCell>
-            {/* Performance metrics - 5 Year */}
-            <TableCell colSpan={3} align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.1)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.75rem',
-              borderLeft: '2px solid rgba(16, 185, 129, 0.3)',
-              borderRight: '2px solid rgba(16, 185, 129, 0.3)'
-            }}>
-              5 Year Comparison
-            </TableCell>
-          </TableRow>
-          {/* Subheader row for performance metrics */}
-          <TableRow>
-            {/* First 10 columns remain empty */}
-            {[...Array(9)].map((_, i) => (
-              <TableCell 
-                key={i}
-                sx={{ 
-                  bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)',
-                  padding: '4px 16px',
-                  borderBottom: `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)'}`
-                }}
-              />
-            ))}
-            
-            {/* 1 Year metrics */}
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem',
-              borderLeft: '2px solid rgba(245, 158, 11, 0.3)'
-            }}>
-              batting_average_1_year_jpm_vs_competitor
-            </TableCell>
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem'
-            }}>
-              returns_1_year_jpm_vs_competitor
-            </TableCell>
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(245, 158, 11, 0.1)' : 'rgba(245, 158, 11, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem',
-              borderRight: '2px solid rgba(245, 158, 11, 0.3)'
-            }}>
-              standard_deviation_1_year_jpm_vs_competitor
-            </TableCell>
-            
-            {/* 3 Year metrics */}
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem',
-              borderLeft: '2px solid rgba(99, 102, 241, 0.3)'
-            }}>
-              batting_average_3_year_jpm_vs_competitor
-            </TableCell>
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem'
-            }}>
-              returns_3_year_jpm_vs_competitor
-            </TableCell>
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(99, 102, 241, 0.1)' : 'rgba(99, 102, 241, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem',
-              borderRight: '2px solid rgba(99, 102, 241, 0.3)'
-            }}>
-              standard_deviation_3_year_jpm_vs_competitor
-            </TableCell>
-            
-            {/* 5 Year metrics */}
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem',
-              borderLeft: '2px solid rgba(16, 185, 129, 0.3)'
-            }}>
-              batting_average_5_year_jpm_vs_competitor
-            </TableCell>
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem'
-            }}>
-              returns_5_year_jpm_vs_competitor
-            </TableCell>
-            <TableCell align="center" sx={{ 
-              bgcolor: isDarkTheme ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.05)',
-              color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-              fontWeight: 'bold',
-              fontSize: '0.7rem',
-              borderRight: '2px solid rgba(16, 185, 129, 0.3)'
-            }}>
-              standard_deviation_5_year_jpm_vs_competitor
-            </TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {recommendationsData.map((row, index) => (
-            <TableRow 
-              key={index}
-              sx={{ 
-                '&:hover': { 
-                  bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)' 
-                }
-              }}
-            >
-              {/* Basic information columns */}
-              <TableCell sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Person sx={{ fontSize: '0.9rem', color: '#3b82f6' }} />
-                  {row.consultant_name}
-                </Box>
-              </TableCell>
-              <TableCell sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
-              }}>
-                <Chip 
-                  label={row.manager_name}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(99, 102, 241, 0.2)',
-                    color: '#6366f1',
-                    fontSize: '0.7rem',
-                    height: 20
-                  }}
-                />
-              </TableCell>
-              <TableCell sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
-              }}>
-                <Chip 
-                  label={row.multi_mandate_manager === 'Y' ? 'Yes' : 'No'}
-                  size="small"
-                  sx={{
-                    bgcolor: row.multi_mandate_manager === 'Y' 
-                      ? 'rgba(16, 185, 129, 0.2)' 
-                      : 'rgba(239, 68, 68, 0.2)',
-                    color: row.multi_mandate_manager === 'Y' ? '#10b981' : '#ef4444',
-                    fontSize: '0.7rem',
-                    height: 20
-                  }}
-                />
-              </TableCell>
-              <TableCell sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                maxWidth: 180
-              }}>
-                {row.incumbent_product}
-              </TableCell>
-              <TableCell sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                maxWidth: 180
-              }}>
-                <Chip 
-                  label={row.jpm_recommended_product}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(245, 158, 11, 0.2)',
-                    color: '#f59e0b',
-                    fontSize: '0.7rem',
-                    height: 20
-                  }}
-                />
-              </TableCell>
-              <TableCell sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
-              }}>
-                <Chip 
-                  label={row.asset_class}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(16, 185, 129, 0.2)',
-                    color: '#10b981',
-                    fontSize: '0.7rem',
-                    height: 20
-                  }}
-                />
-              </TableCell>
-              <TableCell sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                maxWidth: 180
-              }}>
-                {row.universe_name}
-              </TableCell>
-              <TableCell align="center" sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                fontWeight: 'medium'
-              }}>
-                {row.universe_recent_score}
-              </TableCell>
-              <TableCell align="center" sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                fontWeight: 'medium'
-              }}>
-                {row.num_institutional_clients_for_product}
-              </TableCell>
+  // Recommendations View Table - With individual row expansion
+  const renderRecommendationsViewTable = () => {
+    // Define metrics configuration - easy to add/modify metrics
+    const metricsConfig = [
+      {
+        category: '1 Year Comparison',
+        color: '#f59e0b',
+        bgColor: 'rgba(245, 158, 11, 0.15)',
+        lightBgColor: 'rgba(245, 158, 11, 0.05)',
+        borderColor: 'rgba(245, 158, 11, 0.4)',
+        metrics: [
+          { label: 'Batting Average', key: 'batting_average_1_year_jpm_vs_competitor' },
+          { label: 'Returns', key: 'returns_1_year_jpm_vs_competitor' },
+          { label: 'Standard Deviation', key: 'standard_deviation_1_year_jpm_vs_competitor' }
+        ]
+      },
+      {
+        category: '5 Year Comparison',
+        color: '#6366f1',
+        bgColor: 'rgba(99, 102, 241, 0.15)',
+        lightBgColor: 'rgba(99, 102, 241, 0.05)',
+        borderColor: 'rgba(99, 102, 241, 0.4)',
+        metrics: [
+          { label: 'Batting Average', key: 'batting_average_5_year_jpm_vs_competitor' },
+          { label: 'Returns', key: 'returns_5_year_jpm_vs_competitor' },
+          { label: 'Standard Deviation', key: 'standard_deviation_5_year_jpm_vs_competitor' }
+        ]
+      },
+      {
+        category: '10 Year Comparison',
+        color: '#10b981',
+        bgColor: 'rgba(16, 185, 129, 0.15)',
+        lightBgColor: 'rgba(16, 185, 129, 0.05)',
+        borderColor: 'rgba(16, 185, 129, 0.4)',
+        metrics: [
+          { label: 'Batting Average', key: 'batting_average_10_year_jpm_vs_competitor' },
+          { label: 'Returns', key: 'returns_10_year_jpm_vs_competitor' },
+          { label: 'Standard Deviation', key: 'standard_deviation_10_year_jpm_vs_competitor' }
+        ]
+      },
+      {
+        category: 'Engagement & Strategy',
+        color: '#f59e0b',
+        bgColor: 'rgba(245, 158, 11, 0.15)',
+        lightBgColor: 'rgba(245, 158, 11, 0.05)',
+        borderColor: 'rgba(245, 158, 11, 0.4)',
+        metrics: [
+          { label: 'Engagement Score', key: 'engagement_score' },
+          { label: 'Strategy Alignment', key: 'strategy_alignment' },
+          { label: 'Client Retention Rate', key: 'client_retention_rate' },
+          { label: 'Portfolio Diversification', key: 'portfolio_diversification' },
+          { label: 'Risk Adjusted Returns', key: 'risk_adjusted_returns' },
+          { label: 'Market Share Growth', key: 'market_share_growth' },
+          { label: 'Innovation Index', key: 'innovation_index' }
+        ]
+      }
+    ];
 
-              {/* 1 Year Performance Metrics */}
-              <TableCell align="center" sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                borderLeft: '2px solid rgba(245, 158, 11, 0.3)'
-              }}>
-                <Chip
-                  label={row.batting_average_1_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(245, 158, 11, 0.15)',
-                    color: '#f59e0b',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
-              </TableCell>
-              <TableCell align="center" sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
-              }}>
-                <Chip
-                  label={row.returns_1_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(245, 158, 11, 0.15)',
-                    color: '#f59e0b',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
-              </TableCell>
-              <TableCell align="center" sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                borderRight: '2px solid rgba(245, 158, 11, 0.3)'
-              }}>
-                <Chip
-                  label={row.standard_deviation_1_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(245, 158, 11, 0.15)',
-                    color: '#f59e0b',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
-              </TableCell>
+    // Get all unique metric labels (row headers)
+    const allMetricLabels = Array.from(
+      new Set(metricsConfig.flatMap(cat => cat.metrics.map(m => m.label)))
+    );
 
-              {/* 3 Year Performance Metrics */}
-              <TableCell align="center" sx={{ 
+    return (
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          bgcolor: isDarkTheme ? 'rgba(30, 30, 30, 0.5)' : 'rgba(255, 255, 255, 0.5)',
+          maxHeight: 600,
+          border: `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)'}`,
+          overflowX: 'auto'
+        }}
+      >
+        <Table stickyHeader size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                borderLeft: '2px solid rgba(99, 102, 241, 0.3)'
+                fontWeight: 'bold',
+                fontSize: '0.75rem',
+                width: 50
               }}>
-                <Chip
-                  label={row.batting_average_3_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(99, 102, 241, 0.15)',
-                    color: '#6366f1',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
+                {/* Expand column */}
+              </TableCell>
+              <TableCell sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
+              }}>
+                Consultant Name
+              </TableCell>
+              <TableCell sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
+              }}>
+                Manager Name
+              </TableCell>
+              <TableCell sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
+              }}>
+                Multi-Mandate
+              </TableCell>
+              <TableCell sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
+              }}>
+                Incumbent Product
+              </TableCell>
+              <TableCell sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
+              }}>
+                JPM Recommended
+              </TableCell>
+              <TableCell sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
+              }}>
+                Asset Class
+              </TableCell>
+              <TableCell sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
+              }}>
+                Universe Name
               </TableCell>
               <TableCell align="center" sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
               }}>
-                <Chip
-                  label={row.returns_3_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(99, 102, 241, 0.15)',
-                    color: '#6366f1',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
+                Universe Score
               </TableCell>
               <TableCell align="center" sx={{ 
+                bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
                 color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                borderRight: '2px solid rgba(99, 102, 241, 0.3)'
+                fontWeight: 'bold',
+                fontSize: '0.75rem'
               }}>
-                <Chip
-                  label={row.standard_deviation_3_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(99, 102, 241, 0.15)',
-                    color: '#6366f1',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
-              </TableCell>
-
-              {/* 5 Year Performance Metrics */}
-              <TableCell align="center" sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                borderLeft: '2px solid rgba(16, 185, 129, 0.3)'
-              }}>
-                <Chip
-                  label={row.batting_average_5_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(16, 185, 129, 0.15)',
-                    color: '#10b981',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
-              </TableCell>
-              <TableCell align="center" sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem'
-              }}>
-                <Chip
-                  label={row.returns_5_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(16, 185, 129, 0.15)',
-                    color: '#10b981',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
-              </TableCell>
-              <TableCell align="center" sx={{ 
-                color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
-                fontSize: '0.8rem',
-                borderRight: '2px solid rgba(16, 185, 129, 0.3)'
-              }}>
-                <Chip
-                  label={row.standard_deviation_5_year_jpm_vs_competitor}
-                  size="small"
-                  sx={{
-                    bgcolor: 'rgba(16, 185, 129, 0.15)',
-                    color: '#10b981',
-                    fontSize: '0.7rem',
-                    height: 20,
-                    fontWeight: 'bold',
-                    minWidth: 80
-                  }}
-                />
+                Institutional Clients
               </TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  );
+          </TableHead>
+          <TableBody>
+            {recommendationsData.map((row, index) => (
+              <React.Fragment key={index}>
+                {/* Main Row */}
+                <TableRow 
+                  sx={{ 
+                    '&:hover': { 
+                      bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)' 
+                    }
+                  }}
+                >
+                  {/* Expand/Collapse Button */}
+                  <TableCell>
+                    <IconButton
+                      size="small"
+                      onClick={() => toggleRowExpansion(index)}
+                      sx={{ 
+                        color: '#3b82f6',
+                        transition: 'transform 0.2s',
+                        transform: expandedRows.has(index) ? 'rotate(180deg)' : 'rotate(0deg)'
+                      }}
+                    >
+                      <ExpandMore />
+                    </IconButton>
+                  </TableCell>
+
+                  {/* Basic information columns */}
+                  <TableCell sx={{ 
+                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                    fontSize: '0.85rem'
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Person sx={{ fontSize: '0.9rem', color: '#3b82f6' }} />
+                      {row.consultant_name}
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                    fontSize: '0.85rem',
+                    fontWeight: 500
+                  }}>
+                    {row.manager_name}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                    fontSize: '0.8rem'
+                  }}>
+                    <Chip 
+                      label={row.multi_mandate_manager === 'Y' ? 'Yes' : 'No'}
+                      size="small"
+                      sx={{
+                        bgcolor: row.multi_mandate_manager === 'Y' 
+                          ? 'rgba(16, 185, 129, 0.2)' 
+                          : 'rgba(239, 68, 68, 0.2)',
+                        color: row.multi_mandate_manager === 'Y' ? '#10b981' : '#ef4444',
+                        fontSize: '0.7rem',
+                        height: 20,
+                        fontWeight: 'bold'
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                    fontSize: '0.85rem',
+                    maxWidth: 180
+                  }}>
+                    {row.incumbent_product}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    fontSize: '0.85rem',
+                    maxWidth: 180
+                  }}>
+                    <Chip 
+                      icon={<Recommend sx={{ fontSize: '0.85rem' }} />}
+                      label={row.jpm_recommended_product}
+                      size="small"
+                      sx={{
+                        bgcolor: 'rgba(14, 165, 233, 0.2)',
+                        color: '#0ea5e9',
+                        fontSize: '0.75rem',
+                        height: 22,
+                        fontWeight: 'bold',
+                        border: '1px solid rgba(14, 165, 233, 0.4)',
+                        '& .MuiChip-icon': {
+                          color: '#0ea5e9'
+                        }
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                    fontSize: '0.85rem'
+                  }}>
+                    {row.asset_class}
+                  </TableCell>
+                  <TableCell sx={{ 
+                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                    fontSize: '0.85rem',
+                    maxWidth: 180
+                  }}>
+                    {row.universe_name}
+                  </TableCell>
+                  <TableCell align="center" sx={{ 
+                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                    fontSize: '0.85rem',
+                    fontWeight: 'bold'
+                  }}>
+                    {row.universe_recent_score}
+                  </TableCell>
+                  <TableCell align="center" sx={{ 
+                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                    fontSize: '0.85rem',
+                    fontWeight: 'bold'
+                  }}>
+                    {row.num_institutional_clients_for_product}
+                  </TableCell>
+                </TableRow>
+
+                {/* Expandable Metrics Row */}
+                <TableRow>
+                  <TableCell 
+                    colSpan={10} 
+                    sx={{ 
+                      p: 0,
+                      borderBottom: expandedRows.has(index) ? undefined : 'none'
+                    }}
+                  >
+                    <Collapse in={expandedRows.has(index)} timeout="auto" unmountOnExit>
+                      <Box sx={{ 
+                        p: 3,
+                        bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.05)' : 'rgba(59, 130, 246, 0.02)',
+                        borderTop: `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)'}`,
+                        borderBottom: `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)'}`
+                      }}>
+                        <Typography 
+                          variant="subtitle2" 
+                          sx={{ 
+                            mb: 2, 
+                            color: '#3b82f6',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                          }}
+                        >
+                          <ShowChart />
+                          Performance Metrics Comparison (JPM vs Competitor)
+                        </Typography>
+                        
+                        {/* Performance Metrics Section */}
+                        <Box sx={{ mb: 3 }}>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: isDarkTheme ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
+                              fontWeight: 'bold',
+                              display: 'block',
+                              mb: 1,
+                              fontSize: '0.7rem',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}
+                          >
+                            Performance Metrics
+                          </Typography>
+                          <TableContainer 
+                            component={Paper}
+                            sx={{
+                              bgcolor: isDarkTheme ? 'rgba(20, 20, 20, 0.5)' : 'rgba(255, 255, 255, 0.8)',
+                              border: `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)'}`
+                            }}
+                          >
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell sx={{ 
+                                    bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+                                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                                    fontWeight: 'bold',
+                                    fontSize: '0.8rem',
+                                    width: '30%'
+                                  }}>
+                                    Metric
+                                  </TableCell>
+                                  {metricsConfig.slice(0, 3).map((category, idx) => (
+                                    <TableCell 
+                                      key={idx}
+                                      align="center" 
+                                      sx={{ 
+                                        bgcolor: category.bgColor,
+                                        color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.8rem',
+                                        borderLeft: `2px solid ${category.borderColor}`
+                                      }}
+                                    >
+                                      {category.category}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {['Batting Average', 'Returns', 'Standard Deviation'].map((metricLabel, metricIdx) => (
+                                  <TableRow 
+                                    key={metricIdx}
+                                    sx={{ '&:hover': { bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.05)' : 'rgba(59, 130, 246, 0.03)' } }}
+                                  >
+                                    <TableCell sx={{ 
+                                      color: isDarkTheme ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 500
+                                    }}>
+                                      {metricLabel}
+                                    </TableCell>
+                                    {metricsConfig.slice(0, 3).map((category, catIdx) => {
+                                      const metric = category.metrics.find(m => m.label === metricLabel);
+                                      const value = metric ? (row as any)[metric.key] : 'N/A';
+                                      
+                                      return (
+                                        <TableCell 
+                                          key={catIdx}
+                                          align="center" 
+                                          sx={{ 
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.85rem',
+                                            color: value !== 'N/A' ? category.color : isDarkTheme ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+                                            fontWeight: value !== 'N/A' ? 'bold' : 'normal',
+                                            bgcolor: category.lightBgColor,
+                                            borderLeft: `2px solid ${category.borderColor}`
+                                          }}
+                                        >
+                                          {value}
+                                        </TableCell>
+                                      );
+                                    })}
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </Box>
+
+                        {/* Engagement & Strategy Metrics Section */}
+                        <Box>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: isDarkTheme ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
+                              fontWeight: 'bold',
+                              display: 'block',
+                              mb: 1,
+                              fontSize: '0.7rem',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}
+                          >
+                            Engagement & Strategy
+                          </Typography>
+                          <TableContainer 
+                            component={Paper}
+                            sx={{
+                              bgcolor: isDarkTheme ? 'rgba(20, 20, 20, 0.5)' : 'rgba(255, 255, 255, 0.8)',
+                              border: `1px solid ${isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.12)'}`
+                            }}
+                          >
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell sx={{ 
+                                    bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.1)',
+                                    color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                                    fontWeight: 'bold',
+                                    fontSize: '0.8rem',
+                                    width: '40%'
+                                  }}>
+                                    Metric
+                                  </TableCell>
+                                  <TableCell 
+                                    align="center" 
+                                    sx={{ 
+                                      bgcolor: metricsConfig[3].bgColor,
+                                      color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)',
+                                      fontWeight: 'bold',
+                                      fontSize: '0.8rem',
+                                      borderLeft: `2px solid ${metricsConfig[3].borderColor}`
+                                    }}
+                                  >
+                                    Value
+                                  </TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {metricsConfig[3].metrics.map((metric, idx) => {
+                                  const value = (row as any)[metric.key] || 'N/A';
+                                  
+                                  return (
+                                    <TableRow 
+                                      key={idx}
+                                      sx={{ '&:hover': { bgcolor: isDarkTheme ? 'rgba(59, 130, 246, 0.05)' : 'rgba(59, 130, 246, 0.03)' } }}
+                                    >
+                                      <TableCell sx={{ 
+                                        color: isDarkTheme ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 500
+                                      }}>
+                                        {metric.label}
+                                      </TableCell>
+                                      <TableCell 
+                                        align="center" 
+                                        sx={{ 
+                                          fontFamily: 'monospace',
+                                          fontSize: '0.85rem',
+                                          color: value !== 'N/A' ? metricsConfig[3].color : isDarkTheme ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+                                          fontWeight: value !== 'N/A' ? 'bold' : 'normal',
+                                          bgcolor: metricsConfig[3].lightBgColor,
+                                          borderLeft: `2px solid ${metricsConfig[3].borderColor}`
+                                        }}
+                                      >
+                                        {value}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </Box>
+                      </Box>
+                    </Collapse>
+                  </TableCell>
+                </TableRow>
+              </React.Fragment>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    );
+  };
 
   return (
     <>
-      {/* Manager Roster Icon Button */}
-      <Tooltip title="Manager Roster" arrow>
+      <Tooltip title="Manager Roster Actions">
         <IconButton
           onClick={handleMenuClick}
           disabled={isLoading}
-          size="small"
           sx={{
             color: '#3b82f6',
-            bgcolor: 'rgba(59, 130, 246, 0.15)',
-            border: '1px solid rgba(59, 130, 246, 0.3)',
-            borderRadius: 2,
-            p: 0.75,
-            transition: 'all 0.2s ease',
             '&:hover': {
-              bgcolor: 'rgba(59, 130, 246, 0.25)',
-              transform: 'scale(1.05)'
-            },
-            '&:disabled': {
-              bgcolor: 'rgba(156, 163, 175, 0.3)',
-              color: 'rgba(255, 255, 255, 0.5)'
+              bgcolor: 'rgba(59, 130, 246, 0.1)'
             }
           }}
         >
           {isLoading ? (
-            <CircularProgress size={18} sx={{ color: '#3b82f6' }} />
+            <CircularProgress size={20} sx={{ color: '#3b82f6' }} />
           ) : (
-            <TableChart sx={{ fontSize: '1rem' }} />
+            <TableChart />
           )}
         </IconButton>
       </Tooltip>
 
-      {/* Menu with View and Download options */}
       <Menu
         anchorEl={anchorEl}
         open={menuOpen}
@@ -1144,65 +1137,52 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
         PaperProps={{
           sx: {
-            bgcolor: isDarkTheme ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            bgcolor: isDarkTheme ? 'rgba(30, 30, 30, 0.98)' : 'rgba(255, 255, 255, 0.98)',
             backdropFilter: 'blur(10px)',
             border: `1px solid ${isDarkTheme ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.2)'}`,
-            mt: 1
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            minWidth: 220
           }
         }}
       >
         <MenuItem onClick={handleViewTable}>
           <ListItemIcon>
-            <Visibility sx={{ color: '#3b82f6' }} fontSize="small" />
+            <Visibility sx={{ color: '#3b82f6' }} />
           </ListItemIcon>
           <ListItemText 
-            primary="View Tables"
-            secondary="View manager roster & recommendations"
+            primary="View Table"
             primaryTypographyProps={{
-              sx: { color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)', fontSize: '0.9rem' }
-            }}
-            secondaryTypographyProps={{
-              sx: { color: isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)', fontSize: '0.7rem' }
+              sx: { color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)' }
             }}
           />
         </MenuItem>
-        
         <MenuItem onClick={() => handleDownload('excel')}>
           <ListItemIcon>
-            <Download sx={{ color: '#10b981' }} fontSize="small" />
+            <Download sx={{ color: '#10b981' }} />
           </ListItemIcon>
           <ListItemText 
             primary="Download Excel"
-            secondary="Export to Excel (both sheets)"
             primaryTypographyProps={{
-              sx: { color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)', fontSize: '0.9rem' }
-            }}
-            secondaryTypographyProps={{
-              sx: { color: isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)', fontSize: '0.7rem' }
+              sx: { color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)' }
             }}
           />
         </MenuItem>
-
         <MenuItem onClick={() => handleDownload('csv')}>
           <ListItemIcon>
-            <Download sx={{ color: '#10b981' }} fontSize="small" />
+            <Download sx={{ color: '#f59e0b' }} />
           </ListItemIcon>
           <ListItemText 
             primary="Download CSV"
-            secondary="Export to CSV (ZIP with both files)"
             primaryTypographyProps={{
-              sx: { color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)', fontSize: '0.9rem' }
-            }}
-            secondaryTypographyProps={{
-              sx: { color: isDarkTheme ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)', fontSize: '0.7rem' }
+              sx: { color: isDarkTheme ? 'white' : 'rgba(0, 0, 0, 0.87)' }
             }}
           />
         </MenuItem>
       </Menu>
 
-      {/* Table View Dialog with Tabs */}
-      <Dialog
-        open={showTableDialog}
+      {/* Table Dialog */}
+      <Dialog 
+        open={showTableDialog} 
         onClose={() => setShowTableDialog(false)}
         maxWidth="xl"
         fullWidth
@@ -1298,7 +1278,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                       Showing {managerData.length} manager relationships for {companyName}
                     </Typography>
                     <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.8 }}>
-                      Multi-mandate managers are highlighted with a green tag. Switch to Recommendations view to see performance data.
+                      Data sorted by recommended products (showing recommendations first). Switch to Recommendations view to see performance data.
                     </Typography>
                   </Alert>
                 </Box>
@@ -1330,7 +1310,7 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
                       Showing {recommendationsData.length} recommendation{recommendationsData.length !== 1 ? 's' : ''} for {companyName}
                     </Typography>
                     <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.8 }}>
-                      Comparison values show JPM vs competitor metrics. Values display in format: "JPM value vs competitor value"
+                      Click the expand icon (▼) on each row to view detailed performance metrics. Values display in format: "JPM value vs competitor value"
                     </Typography>
                   </Alert>
                 </Box>
@@ -1448,6 +1428,3 @@ export const ManagerRosterButton: React.FC<ManagerRosterButtonProps> = ({
     </>
   );
 };
-          
-
-          
