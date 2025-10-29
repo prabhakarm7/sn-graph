@@ -1,0 +1,4 @@
+I want to enhance the manager roster design, 
+1) remove the chips from name or other keep chiips only for number or boolean like yes or no or status. it must be readable without any effort
+2) sort the manager roster view by recommended_product column which shows the values first and then null values for column
+3) for recommendation view, I like the table  but it too much horizontal scrollong can we keep some columns in table and other hidden and button to show all metrics it views all the metrics?
