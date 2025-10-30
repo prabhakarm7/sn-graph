@@ -21,8 +21,8 @@ import {
   Psychology,          
   Recommend,           
   AutoAwesome,          
-  Star,                 // For consultant influence (crown alternative)
-  WorkOutline,          // For mandate manager
+  Star,                 
+  WorkOutline,          
   Support
 } from '@mui/icons-material';
 
@@ -37,25 +37,18 @@ import { ManagerRosterButton } from './ManagerRosterButton';
 
 // Helper function to find the consultant this field consultant belongs to
 const findParentConsultant = (fieldConsultantData: AppNodeData) => {
-  // Method 1: Use explicit parent_consultant_id from database (PREFERRED)
   if (fieldConsultantData.parent_consultant_id) {
-    console.log(`🔗 Field consultant ${fieldConsultantData.id} -> Parent consultant ${fieldConsultantData.parent_consultant_id} (parent_consultant_id)`);
-    return fieldConsultantData.parent_consultant_id+'asdasd';
+    return fieldConsultantData.parent_consultant_id;
   }
   
-  // Method 2: Use consultant_id from database (NEW from database setup)
   if (fieldConsultantData.consultant_id) {
-    console.log(`🔗 Field consultant ${fieldConsultantData.id} -> Parent consultant ${fieldConsultantData.consultant_id} (consultant_id)`);
     return fieldConsultantData.consultant_id;
   }
   
-  // Method 3: Use legacy parentConsultantId if available (backward compatibility)
   if (fieldConsultantData.parentConsultantId) {
-    console.log(`🔗 Field consultant ${fieldConsultantData.id} -> Parent consultant ${fieldConsultantData.parentConsultantId} (legacy parentConsultantId)`);
     return fieldConsultantData.parentConsultantId;
   }
   
-  // Method 4: Extract from naming pattern (e.g., "NAI_F1" -> "NAI_C1")
   if (fieldConsultantData.id) {
     let consultantId = fieldConsultantData.id;
     
@@ -71,31 +64,23 @@ const findParentConsultant = (fieldConsultantData: AppNodeData) => {
         consultantId = `${parts[0]}_C${parts[parts.length - 1]}`;
       }
     }
-    
-    console.log(`🔗 Field consultant ${fieldConsultantData.id} -> Parent consultant ${consultantId} (pattern matching)`);
     return consultantId;
   }
   
-  // Method 5: Use PCA if available (fallback)
   if (fieldConsultantData.pca) {
-    console.log(`🔗 Field consultant ${fieldConsultantData.id} -> Using PCA ${fieldConsultantData.pca}`);
     return fieldConsultantData.pca;
   }
   
-  // Method 6: Extract from name pattern
   if (fieldConsultantData.name) {
     const nameMatch = fieldConsultantData.name.match(/(\w+)\s*\d*\s*\((\w+)\)/);
     if (nameMatch) {
       const region = nameMatch[2];
       const number = fieldConsultantData.id?.match(/\d+$/)?.[0] || '1';
       const consultantId = `${region}_C${number}`;
-      console.log(`🔗 Field consultant ${fieldConsultantData.id} -> Extracted from name: ${consultantId}`);
       return consultantId;
     }
   }
   
-  // Fallback
-  console.log(`🔗 Field consultant ${fieldConsultantData.id} -> Using own ID as fallback`);
   return fieldConsultantData.id || 'default';
 };
 
@@ -105,7 +90,6 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
   
   const colors = ENTITY_COLORS.consultant;
   
-  // Get advisor information
   const consultantAdvisor = data.consultant_advisor;
   const pca = data.pca;
 
@@ -113,8 +97,8 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
     <div 
       style={{ 
         padding: 16, 
-        background: colors.light, 
-        color: 'white', 
+        background: '#1a1a2e', 
+        color: '#ffffff', 
         borderRadius: 16, 
         minWidth: 200, 
         maxWidth: 240,
@@ -131,7 +115,7 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1, gap: 1 }}>
         <BusinessCenter sx={{ fontSize: '1.5rem', color: colors.primary }} />
         <Typography variant="caption" sx={{ 
-          color: `${colors.primary}dd`, 
+          color: '#ffffff', 
           fontWeight: 'bold',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
@@ -150,23 +134,14 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
         {data.name}
       </Typography>
 
-       {/* Color indicator */}
-      {/* <Box sx={{
-        mt: 1,
-        width: '100%',
-        height: '3px',
-        background: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
-        borderRadius: '2px'
-      }} /> */}
-
-      {/* Compact Advisor Badges */}
       {(consultantAdvisor || pca) && (
         <Box sx={{ 
           display: 'flex', 
           flexDirection: 'column', 
           gap: 0.5, 
           mt: 1,
-          alignItems: 'center'
+          alignItems: 'stretch',
+          width: '100%'
         }}>
           {consultantAdvisor && (
             <Tooltip 
@@ -174,35 +149,40 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
               arrow 
               placement="top"
             >
-              <Chip
-                icon={<Support sx={{ fontSize: '0.7rem' }} />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                    <Typography variant="caption" sx={{ fontSize: '0.65rem', opacity: 0.8 }}>
-                      Consultant Advisor:
-                    </Typography>
-                    <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-                      {Array.isArray(consultantAdvisor) 
-                        ? consultantAdvisor.length > 1 
-                          ? `${consultantAdvisor[0].split(' ')[0]}+${consultantAdvisor.length - 1}`
-                          : consultantAdvisor[0].split(' ')[0]
-                        : consultantAdvisor.split(' ')[0]}
-                    </Typography>
-                  </Box>
-                }
-                size="small"
+              <Box
                 sx={{
-                  bgcolor: 'rgba(99, 102, 241, 0.2)',
-                  color: colors.primary,
-                  height: 20,
-                  fontSize: '0.65rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  p: 0.8,
+                  borderRadius: 1.5,
+                  backgroundColor: 'rgba(99, 102, 241, 0.15)',
                   border: `1px solid ${colors.primary}40`,
-                  '& .MuiChip-icon': {
-                    color: colors.primary,
-                    fontSize: '0.7rem'
-                  }
                 }}
-              />
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
+                  <Support sx={{ fontSize: '0.8rem', color: colors.primary }} />
+                  <Typography variant="caption" sx={{ 
+                    fontSize: '0.7rem', 
+                    color: '#ffffff',
+                    fontWeight: 'medium'
+                  }}>
+                    Consultant Advisor
+                  </Typography>
+                </Box>
+                
+                <Typography variant="caption" sx={{ 
+                  fontSize: '0.7rem', 
+                  fontWeight: 'bold',
+                  color: colors.primary
+                }}>
+                  {Array.isArray(consultantAdvisor) 
+                    ? consultantAdvisor.length > 1 
+                      ? `${consultantAdvisor[0].split(' ')[0]}+${consultantAdvisor.length - 1}`
+                      : consultantAdvisor[0].split(' ')[0]
+                    : consultantAdvisor.split(' ')[0]}
+                </Typography>
+              </Box>
             </Tooltip>
           )}
           
@@ -212,41 +192,44 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
               arrow 
               placement="top"
             >
-              <Chip
-                icon={<Star sx={{ fontSize: '0.7rem' }} />}
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                    <Typography variant="caption" sx={{ fontSize: '0.65rem', opacity: 0.8 }}>
-                      PCA:
-                    </Typography>
-                    <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-                      {Array.isArray(pca) 
-                        ? pca.length > 1 
-                          ? `${pca[0].split(' ')[0]}+${pca.length - 1}`
-                          : pca[0].split(' ')[0]
-                        : pca.split(' ')[0]}
-                    </Typography>
-                  </Box>
-                }
-                size="small"
+              <Box
                 sx={{
-                 bgcolor: 'rgba(99, 102, 241, 0.2)',
-                  color: colors.primary,
-                  height: 20,
-                  fontSize: '0.65rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  p: 0.8,
+                  borderRadius: 1.5,
+                  backgroundColor: 'rgba(99, 102, 241, 0.15)',
                   border: `1px solid ${colors.primary}40`,
-                  '& .MuiChip-icon': {
-                    color: colors.primary,
-                    fontSize: '0.7rem'
-                  }
                 }}
-              />
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
+                  <Star sx={{ fontSize: '0.8rem', color: colors.primary }} />
+                  <Typography variant="caption" sx={{ 
+                    fontSize: '0.7rem', 
+                    color: '#ffffff',
+                    fontWeight: 'medium'
+                  }}>
+                    Primary CA
+                  </Typography>
+                </Box>
+                
+                <Typography variant="caption" sx={{ 
+                  fontSize: '0.7rem', 
+                  fontWeight: 'bold',
+                  color: colors.primary
+                }}>
+                  {Array.isArray(pca) 
+                    ? pca.length > 1 
+                      ? `${pca[0].split(' ')[0]}+${pca.length - 1}`
+                      : pca[0].split(' ')[0]
+                    : pca.split(' ')[0]}
+                </Typography>
+              </Box>
             </Tooltip>
           )}
         </Box>
       )}
-      
-     
       
       <Handle type="source" position={Position.Bottom} style={{ background: colors.primary }} />
     </div>
@@ -256,24 +239,22 @@ export const ConsultantNode = React.memo(function ConsultantNode({ data }: NodeP
 export const FieldConsultantNode = React.memo(function FieldConsultantNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
-  // Get parent consultant's color (inherits from parent)
   const parentConsultantId = findParentConsultant(data);
-  // const colors = getConsultantColorById(parentConsultantId);
   const colors = ENTITY_COLORS.fieldConsultant;
   
   return (
     <div 
       style={{ 
         padding: 16, 
-        background: colors.light, 
-        color: 'white', 
+        background: '#1a1a2e', 
+        color: '#ffffff', 
         borderRadius: 16, 
         minWidth: 200, 
         textAlign: 'center',
         boxShadow: isHovered ? `0 8px 32px ${colors.primary}66` : `0 4px 16px ${colors.primary}33`,
         transform: isHovered ? 'scale(1.05)' : 'scale(1)',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        border: `2px solid ${colors.primary}`, // Dashed border to show it's a subordinate
+        border: `2px solid ${colors.primary}`,
         backdropFilter: 'blur(10px)',
       }}
       onMouseEnter={() => setIsHovered(true)}
@@ -283,7 +264,7 @@ export const FieldConsultantNode = React.memo(function FieldConsultantNode({ dat
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1, gap: 1 }}>
         <Person sx={{ fontSize: '1.5rem', color: colors.primary }} />
         <Typography variant="caption" sx={{ 
-          color: `${colors.primary}dd`, 
+          color: '#ffffff', 
           fontWeight: 'bold',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
@@ -301,7 +282,6 @@ export const FieldConsultantNode = React.memo(function FieldConsultantNode({ dat
         {data.name}
       </Typography>
       
-      {/* Color indicator - thinner for field consultant */}
       <Box sx={{
         mt: 1,
         width: '80%',
@@ -316,19 +296,17 @@ export const FieldConsultantNode = React.memo(function FieldConsultantNode({ dat
   );
 });
 
-// 🏢 COMPANY NODE COMPONENT
 export const CompanyNode = React.memo(function CompanyNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
-  // Use fixed company colors (separate from consultants)
   const colors = ENTITY_COLORS.company;
   
   return (
     <div 
       style={{ 
         padding: 16, 
-        background: colors.light, 
-        color: 'white', 
+        background: '#1a1a2e', 
+        color: '#ffffff', 
         borderRadius: 16, 
         minWidth: 220, 
         textAlign: 'center',
@@ -341,7 +319,6 @@ export const CompanyNode = React.memo(function CompanyNode({ data }: NodeProps<A
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Manager Roster Button - positioned in top right */}
       <Box sx={{
         position: 'absolute',
         top: 8,
@@ -358,7 +335,7 @@ export const CompanyNode = React.memo(function CompanyNode({ data }: NodeProps<A
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1, gap: 1 }}>
         <CorporateFare sx={{ fontSize: '1.5rem', color: colors.primary }} />
         <Typography variant="caption" sx={{ 
-          color: `${colors.primary}dd`, 
+          color: '#ffffff', 
           fontWeight: 'bold',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
@@ -380,15 +357,14 @@ export const CompanyNode = React.memo(function CompanyNode({ data }: NodeProps<A
   );
 });
 
-// 🏦 INCUMBENT PRODUCT NODE COMPONENT (UPDATED with mandate manager)
+
 export const IncumbentProductNode = React.memo(function IncumbentProductNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
-  // 🎨 DISTINCT COLOR SCHEME for incumbent products
   const colors = {
-    primary: '#f59e0b',    // Amber for incumbent products
-    secondary: '#d97706',  // Darker amber
-    light: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.1) 100%)'
+    primary: '#f59e0b',
+    secondary: '#d97706',
+    light: '#1a1a2e'
   };
   
   return (
@@ -396,7 +372,7 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
       style={{ 
         padding: 18, 
         background: colors.light, 
-        color: 'white', 
+        color: '#ffffff', 
         borderRadius: 18, 
         minWidth: 280, 
         textAlign: 'center',
@@ -415,7 +391,7 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
         <Psychology sx={{ fontSize: '1.5rem', color: colors.primary }} />
         <Box sx={{ textAlign: 'left' }}>
           <Typography variant="caption" sx={{ 
-            color: colors.primary, 
+            color: '#ffffff', 
             fontWeight: 'bold',
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
@@ -443,7 +419,6 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
         {data.name}
       </Typography>
 
-      {/* Show both GUID and Mandate Manager as chips */}
       <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: 'center' }}>
         {data.evestment_product_guid && (
           <Chip 
@@ -451,7 +426,7 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
             size="small"
             sx={{
               bgcolor: `${colors.primary}20`,
-              color: colors.primary,
+              color: '#ffffff',
               fontSize: '0.65rem',
               fontWeight: 'bold'
             }}
@@ -462,14 +437,14 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
           <Chip 
             label={`Manager: ${data.manager}`}
             size="small"
-            icon={<WorkOutline sx={{ fontSize: '0.8rem' }} />}
+            icon={<WorkOutline sx={{ fontSize: '0.8rem', color: '#ffffff' }} />}
             sx={{
               bgcolor: 'rgba(255, 255, 255, 0.1)',
-              color: 'white',
+              color: '#ffffff',
               fontSize: '0.65rem',
               fontWeight: 'medium',
               '& .MuiChip-icon': {
-                color: 'white'
+                color: '#ffffff'
               }
             }}
           />
@@ -481,13 +456,10 @@ export const IncumbentProductNode = React.memo(function IncumbentProductNode({ d
   );
 });
 
-// 🏦 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator)
-// 🦈 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator and associated consultant)
-// 🦈 PRODUCT NODE COMPONENT (UPDATED with consultant influence indicator and associated consultant)
+
 export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<AppNodeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
-  // Use fixed product colors (separate from consultants)
   const colors = ENTITY_COLORS.product;
   
   const colorFor = (rg: RankGroup) =>
@@ -496,21 +468,16 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
     rg === 'Introduced' ? STATUS_COLORS.neutral : 
     rg === 'Neutral' ? STATUS_COLORS.neutral : STATUS_COLORS.neutral;
 
-  // Get the associated consultant(s) from consultant_name (which is a list)
   const getAssociatedConsultants = () => {
     if (data.consultant_name) {
-      // consultant_name is already a list/array
       return Array.isArray(data.consultant_name) ? data.consultant_name : [data.consultant_name];
     }
     return [];
   };
   
   const associatedConsultants = getAssociatedConsultants();
-  
-  // NEW: Check if there's a consultant influence
   const hasConsultantInfluence = associatedConsultants.length > 0;
   
-  // Determine product icon based on asset class
   const getProductIcon = () => {
     const assetClass = data.asset_class?.toLowerCase();
     switch (assetClass) {
@@ -531,8 +498,8 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
     <div 
       style={{ 
         padding: 18, 
-        background: colors.light, 
-        color: 'white', 
+        background: '#1a1a2e', 
+        color: '#ffffff', 
         borderRadius: 18, 
         minWidth: 260, 
         textAlign: 'center',
@@ -548,7 +515,6 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
     >
       <Handle type="target" position={Position.Top} style={{ background: ENTITY_COLORS.company.primary }} />
       
-      {/* NEW: Consultant Influence Star Icon */}
       {hasConsultantInfluence && (
         <Box sx={{
           position: 'absolute',
@@ -572,7 +538,7 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
         {getProductIcon()}
         <Box sx={{ textAlign: 'left' }}>
           <Typography variant="caption" sx={{ 
-            color: colors.primary, 
+            color: '#ffffff', 
             fontWeight: 'bold',
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
@@ -600,7 +566,6 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
         {data.name}
       </Typography>
 
-      {/* Show universe properties if available */}
       {(data.universe_name || data.universe_score) && (
         <Box sx={{ mb: 1 }}>
           {data.universe_name && (
@@ -609,7 +574,7 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
               size="small"
               sx={{
                 bgcolor: `${colors.primary}20`,
-                color: colors.primary,
+                color: '#ffffff',
                 fontSize: '0.65rem',
                 fontWeight: 'bold',
                 mr: 0.5
@@ -622,7 +587,7 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
               size="small"
               sx={{
                 bgcolor: `${colors.primary}30`,
-                color: colors.primary,
+                color: '#ffffff',
                 fontSize: '0.65rem',
                 fontWeight: 'bold'
               }}
@@ -633,7 +598,6 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
 
       <Divider sx={{ my: 1.5, borderColor: `${colors.primary}30` }} />
       
-      {/* NEW: Associated Consultant(s) Section - using consultant_name */}
       {associatedConsultants.length > 0 && (
         <Box sx={{ mb: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.8 }}>
@@ -684,19 +648,18 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
               <Assessment sx={{ fontSize: '1rem', color: colors.primary }} />
               <Typography variant="caption" sx={{ 
-                color: colors.primary, 
+                color: '#ffffff', 
                 fontWeight: 'bold',
                 fontSize: '0.75rem'
               }}>
                 Consultant Ratings
               </Typography>
-              {/* Show total count with main consultant indicator */}
               <Chip 
                 label={`${data.ratings.length}${associatedConsultants.length > 0 ? ' +★' : ''}`}
                 size="small"
                 sx={{
                   bgcolor: associatedConsultants.length > 0 ? '#ffd70020' : `${colors.primary}20`,
-                  color: associatedConsultants.length > 0 ? '#ffd700' : colors.primary,
+                  color: associatedConsultants.length > 0 ? '#ffd700' : '#ffffff',
                   fontSize: '0.6rem',
                   height: 16,
                   fontWeight: 'bold'
@@ -704,12 +667,9 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
               />
             </Box>
             {(() => {
-              // Sort ratings: main consultant first, then others
               const sortedRatings = [...data.ratings].sort((a, b) => {
-                // Main consultant first
                 if (a.is_main_consultant && !b.is_main_consultant) return -1;
                 if (!a.is_main_consultant && b.is_main_consultant) return 1;
-                // Then alphabetical
                 return (a.consultant || '').localeCompare(b.consultant || '');
               });
               
@@ -734,7 +694,6 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
                     position: 'relative'
                   }}
                 >
-                  {/* Star indicator for main consultant */}
                   {r.is_main_consultant && (
                     <Box sx={{
                       position: 'absolute',
@@ -757,7 +716,7 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
                     <Typography variant="caption" sx={{ 
                       fontSize: '0.7rem', 
-                      color: r.is_main_consultant ? '#ffd700' : colors.primary,
+                      color: r.is_main_consultant ? '#ffd700' : '#ffffff',
                       fontWeight: r.is_main_consultant ? 'bold' : 'medium',
                       flex: 1,
                       minWidth: 0,
@@ -767,7 +726,6 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
                       {r.consultant}
                     </Typography>
                     
-                    {/* Main consultant badge */}
                     {r.is_main_consultant && (
                       <Chip
                         label="OWNS"
@@ -809,7 +767,6 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
                 }}>
                   +{data.ratings.length - 3} more ratings
                 </Typography>
-                {/* Show if main consultant is in the hidden ratings */}
                 {data.ratings.length > 3 && 
                  data.ratings.slice(3).some((r: any) => r.is_main_consultant) && (
                   <Star sx={{ fontSize: '0.6rem', color: '#ffd700' }} />
@@ -821,7 +778,7 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
           <Typography variant="caption" sx={{ 
             opacity: 0.7, 
             fontStyle: 'italic', 
-            color: colors.primary,
+            color: '#ffffff',
             fontSize: '0.75rem'
           }}>
             No ratings available
@@ -832,13 +789,12 @@ export const ProductNode = React.memo(function ProductNode({ data }: NodeProps<A
   );
 });
 
-// 🔗 CUSTOM EDGE COMPONENT (Updated with BI_RECOMMENDS)
+
 export const CustomEdge = React.memo(function CustomEdge({
   id, sourceX, sourceY, targetX, targetY, selected, data,
 }: EdgeProps<EdgeData>) {
   const [isHovered, setIsHovered] = useState(false);
   
-  // Provide default values for data properties
   const edgeData = data || {};
   const relType = edgeData.relType;
   const mandateStatus = edgeData.mandate_status;
@@ -852,7 +808,6 @@ export const CustomEdge = React.memo(function CustomEdge({
       case 'RATES': return 'url(#rates-gradient)';
       case 'BI_RECOMMENDS': return 'url(#bi-recommends-gradient)';
       case 'OWNS': 
-        // Color based on mandate status for client to product
         switch (mandateStatus) {
           case 'Active': return STATUS_COLORS.active;
           case 'At Risk': return STATUS_COLORS.atRisk;
@@ -865,7 +820,6 @@ export const CustomEdge = React.memo(function CustomEdge({
 
   const getEdgeWidth = (relType?: string, levelOfInfluence?: string | number) => {
     if (relType === 'COVERS' && levelOfInfluence) {
-      // Significantly increased width mapping for visibility
       const widthMap: { [key: string]: number } = {
         'UNK': 6,
         '1': 6,
@@ -877,18 +831,15 @@ export const CustomEdge = React.memo(function CustomEdge({
         'low': 6
       };
       
-      // Convert to string if it's a number
       const influenceKey = String(levelOfInfluence);
       const baseWidth = widthMap[influenceKey] || 8;
       return isHovered ? baseWidth + 3 : baseWidth;
     }
     
-    // Special width for BI_RECOMMENDS (thicker to show importance)
     if (relType === 'BI_RECOMMENDS') {
       return isHovered ? 12 : 8;
     }
     
-    // Much larger minimum width for visibility
     return isHovered ? 10 : selected ? 8 : 6;
   };
 
@@ -897,23 +848,13 @@ export const CustomEdge = React.memo(function CustomEdge({
   const midX = (sourceX + targetX) / 2;
   const midY = (sourceY + targetY) / 2;
 
-  // Calculate path for better interaction
   const edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
 
-  // Enhanced label text for BI_RECOMMENDS
   const getLabelText = () => {
-    if (relType === 'COVERS') {
-      return 'COVERS';
-    }
-    if (relType === 'RATES' && rating) {
-      return rating;
-    }
-    if (relType === 'OWNS') {
-      return 'OWNS';
-    }
-    if (relType === 'BI_RECOMMENDS') {
-      return 'BI RECOMMENDS';
-    }
+    if (relType === 'COVERS') return 'COVERS';
+    if (relType === 'RATES' && rating) return rating;
+    if (relType === 'OWNS') return 'OWNS';
+    if (relType === 'BI_RECOMMENDS') return 'BI RECOMMENDS';
     return relType || '';
   };
 
@@ -932,26 +873,12 @@ export const CustomEdge = React.memo(function CustomEdge({
     return { bg: APP_THEME_COLORS.surface, text: 'white' };
   };
 
-  // Tooltip content for hover
   const getTooltipContent = () => {
     const parts = [];
-    
-    if (relType) {
-      parts.push(`Relationship: ${relType}`);
-    }
-    
-    if (mandateStatus) {
-      parts.push(`Status: ${mandateStatus}`);
-    }
-    
-    if (levelOfInfluence) {
-      parts.push(`Influence: ${levelOfInfluence}`);
-    }
-    
-    if (rating) {
-      parts.push(`Rating: ${rating}`);
-    }
-    
+    if (relType) parts.push(`Relationship: ${relType}`);
+    if (mandateStatus) parts.push(`Status: ${mandateStatus}`);
+    if (levelOfInfluence) parts.push(`Influence: ${levelOfInfluence}`);
+    if (rating) parts.push(`Rating: ${rating}`);
     return parts.join(' | ');
   };
 
@@ -980,7 +907,6 @@ export const CustomEdge = React.memo(function CustomEdge({
         </linearGradient>
       </defs>
       
-      {/* Invisible thick path for better hover detection */}
       <path 
         d={edgePath}
         fill="none"
@@ -993,7 +919,6 @@ export const CustomEdge = React.memo(function CustomEdge({
         <title>{getTooltipContent()}</title>
       </path>
       
-      {/* Visible edge path with enhanced visibility */}
       <path 
         id={id} 
         fill="none" 
@@ -1012,7 +937,6 @@ export const CustomEdge = React.memo(function CustomEdge({
         }}
       />
       
-      {/* Additional background stroke for even better visibility */}
       <path 
         id={`${id}-background`} 
         fill="none" 
@@ -1028,10 +952,8 @@ export const CustomEdge = React.memo(function CustomEdge({
         }}
       />
       
-      {/* Tooltip label on hover only */}
       {isHovered && getLabelText() && (
         <g>
-          {/* Enhanced label background with dynamic sizing */}
           <rect
             x={midX - (relType === 'BI_RECOMMENDS' ? 55 : 40)}
             y={midY - 18}
@@ -1046,7 +968,6 @@ export const CustomEdge = React.memo(function CustomEdge({
             }}
           />
           
-          {/* Border for tooltip */}
           <rect
             x={midX - (relType === 'BI_RECOMMENDS' ? 55 : 40)}
             y={midY - 18}
@@ -1058,7 +979,6 @@ export const CustomEdge = React.memo(function CustomEdge({
             rx={12}
           />
           
-          {/* Tooltip text */}
           <text 
             x={midX} 
             y={midY + 6} 
@@ -1074,7 +994,6 @@ export const CustomEdge = React.memo(function CustomEdge({
             {getLabelText()}
           </text>
           
-          {/* Icon for BI_RECOMMENDS */}
           {relType === 'BI_RECOMMENDS' && (
             <text
               x={midX - 40}
@@ -1095,7 +1014,6 @@ export const CustomEdge = React.memo(function CustomEdge({
   );
 });
 
-// 📋 NODE/EDGE TYPE MAPS (Updated)
 export const nodeTypes = {
   CONSULTANT: ConsultantNode,
   FIELD_CONSULTANT: FieldConsultantNode,
@@ -1106,5 +1024,4 @@ export const nodeTypes = {
 
 export const edgeTypes = { custom: CustomEdge };
 
-// 🎨 EXPORT COLOR CONSTANTS
 export { APP_THEME_COLORS, ENTITY_COLORS, STATUS_COLORS };

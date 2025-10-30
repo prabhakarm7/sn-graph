@@ -210,12 +210,12 @@ export const ENTITY_COLORS = {
     description: 'Vibrant field consultant cyan'
   },
   company: {
-    name: 'Corporate Green',
-    primary: '#059669',      // Emerald green for companies
-    secondary: '#047857',
-    light: 'rgba(5, 150, 105, 0.12)',
-    text: '#ffffff',         // White text for visibility
-    description: 'Professional corporate green'
+    name: 'Corporate Burgundy',
+    primary: '#be185d',      // Burgundy for companies
+    secondary: '#9f1239',
+    light: 'rgba(190, 24, 93, 0.12)',
+    text: '#ffffff',
+    description: 'Professional corporate burgundy'
   },
   product: {
     name: 'Product Blue',
