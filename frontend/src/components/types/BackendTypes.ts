@@ -1,4 +1,4 @@
-// types/BackendTypes.ts - New file for backend-specific types
+// Updated BackendTypes.ts - Added TPA range support
 import { FilterOptions } from './FitlerTypes';
 
 export interface BackendFilterOptions {
@@ -14,11 +14,18 @@ export interface BackendFilterOptions {
   consultant_advisors?: string[];
   ratings?: string[];
   mandate_statuses?: string[];
-  mandate_managers?: string[];    // ADD THIS LINE
-  universe_names?: string[];      // ADD THIS LINE
+  mandate_managers?: string[];
+  universe_names?: string[];
   influence_levels?: string[];
   jpm_flags?: string[];
   privacy_levels?: string[];
+  
+  // 🆕 NEW: TPA range
+  tpa_range?: {
+    min: number;
+    max: number;
+    average: number;
+  };
 }
 
 // Transform backend options to frontend FilterOptions type
@@ -56,9 +63,12 @@ export function transformBackendFilterOptions(backendOptions: BackendFilterOptio
     ratings: backendOptions.ratings || ['Positive', 'Negative', 'Neutral', 'Introduced'],
     influenceLevels: backendOptions.influence_levels || ['1', '2', '3', '4', 'High', 'medium', 'low', 'UNK'],
     mandateStatuses: backendOptions.mandate_statuses || ['Active', 'At Risk', 'Conversion in Progress'],
-    mandateManagers: backendOptions.mandate_managers || [],     // ADD THIS LINE
+    mandateManagers: backendOptions.mandate_managers || [],
     universeNames: backendOptions.universe_names || [],    
     jpm_flags: backendOptions.jpm_flags || ['Y', 'N'],
-    privacy_levels: backendOptions.privacy_levels || ['Public', 'Private', 'Confidential']
+    privacy_levels: backendOptions.privacy_levels || ['Public', 'Private', 'Confidential'],
+    
+    // 🆕 NEW: TPA range
+    tpaRange: backendOptions.tpa_range
   };
 }

@@ -1,4 +1,4 @@
-// Fixed FilterTypes.ts - Proper separation between options and criteria
+// Updated FilterTypes.ts - Added TPA range filter for field consultants
 
 export interface FilterCriteria {
   regions?: string[];
@@ -21,9 +21,15 @@ export interface FilterCriteria {
   consultantAdvisorIds?: string[];
   legacyPcaIds?: string[];
   mandateStatuses?: string[];
-  mandateManagers?: string[];     // ADD THIS LINE
-  universeNames?: string[];       // ADD THIS LINE
+  mandateManagers?: string[];
+  universeNames?: string[];
   showInactive?: boolean;
+  
+  // 🆕 NEW: TPA range filter for field consultants
+  tpaRange?: {
+    min: number;
+    max: number;
+  };
 }
 
 // FilterOptions - what's available for selection (entities have id/name, simple filters are strings)
@@ -46,10 +52,17 @@ export interface FilterOptions {
   ratings: string[];
   influenceLevels: string[];
   mandateStatuses: string[];
-  mandateManagers?: string[];     // ADD THIS LINE
-  universeNames?: string[];       // ADD THIS LINE
+  mandateManagers?: string[];
+  universeNames?: string[];
   jpm_flags: string[];
   privacy_levels: string[];
+  
+  // 🆕 NEW: TPA range information
+  tpaRange?: {
+    min: number;
+    max: number;
+    average: number;
+  };
 }
 
 // Helper function to extract names from entity options for filter criteria
@@ -80,7 +93,8 @@ export function transformHierarchicalOptions(hierarchicalOptions: HierarchicalFi
   console.log('Transforming hierarchical options with proper entity/string separation:', {
     clientAdvisors: options.client_advisors?.length || 0,
     consultantAdvisors: options.consultant_advisors?.length || 0,
-    incumbentProducts: options.incumbent_products?.length || 0
+    incumbentProducts: options.incumbent_products?.length || 0,
+    tpaRange: options.tpa_range // 🆕 NEW
   });
 
   return {
@@ -103,7 +117,10 @@ export function transformHierarchicalOptions(hierarchicalOptions: HierarchicalFi
     influenceLevels: extractStringArray(options.influence_levels) || ['1', '2', '3', '4'],
     mandateStatuses: extractStringArray(options.mandate_statuses) || ['Active', 'At Risk', 'Conversion in Progress'],
     jpm_flags: extractStringArray(options.jpm_flags) || ['Y', 'N'],
-    privacy_levels: extractStringArray(options.privacy_levels) || ['Public', 'Private', 'Confidential']
+    privacy_levels: extractStringArray(options.privacy_levels) || ['Public', 'Private', 'Confidential'],
+    
+    // 🆕 NEW: TPA range
+    tpaRange: options.tpa_range
   };
 }
 
@@ -125,4 +142,11 @@ export interface HierarchicalFilterOptions {
   mandate_statuses?: string[];
   jpm_flags?: string[];
   privacy_levels?: string[];
+  
+  // 🆕 NEW: TPA range
+  tpa_range?: {
+    min: number;
+    max: number;
+    average: number;
+  };
 }

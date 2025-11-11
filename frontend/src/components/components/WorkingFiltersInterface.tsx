@@ -21,6 +21,8 @@ import {
 import { Clear, Check, Psychology, TrendingUp, Business, Person, Assessment, Security } from '@mui/icons-material';
 import { useGraphDataContext } from '../context/GraphDataProvider';
 import type { FilterCriteria } from '../types/FitlerTypes';
+import { Slider } from '@mui/material';
+
 
 interface WorkingFiltersInterfaceProps {
   recommendationsMode?: boolean;
@@ -52,6 +54,9 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
   const isInitialized = useRef(false);
   const lastAppliedFiltersRef = useRef<string>('');
   const currentModeRef = useRef(recommendationsMode);
+  const [tpaRange, setTpaRange] = useState<number[]>([0, 100]);
+  const [tpaRangeLimits, setTpaRangeLimits] = useState<{min: number, max: number}>({min: 0, max: 100});
+
   
   // Helper function to convert entity objects to names for criteria storage
   const convertEntityToNames = (entities: Array<{id: string, name: string}>): string[] => {
@@ -207,6 +212,21 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
     }
   }, [localFilters, storePendingFilters]);
 
+  useEffect(() => {
+    if (filterOptions?.tpaRange) {
+      const { min, max } = filterOptions.tpaRange;
+      setTpaRangeLimits({ min, max });
+      
+      // Check if we have stored TPA range in local filters
+      if (localFilters.tpaRange) {
+        setTpaRange([localFilters.tpaRange.min, localFilters.tpaRange.max]);
+      } else {
+        // Default to full range
+        setTpaRange([min, max]);
+      }
+    }
+  }, [filterOptions, localFilters.tpaRange]);
+
   // Sync FROM applied filters only when they change AND we don't have unsaved changes
   useEffect(() => {
     if (!isInitialized.current || filterLoading) {
@@ -312,6 +332,31 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
     }
   };
 
+  const formatTpaValue = (value: number) => {
+    if (value >= 1000000) {
+      return `$${(value / 1000000).toFixed(1)}M`;
+    } else if (value >= 1000) {
+      return `$${(value / 1000).toFixed(0)}K`;
+    }
+    return `$${value}`;
+  };
+
+  const handleTpaRangeChange = (event: Event, newValue: number | number[]) => {
+    const range = newValue as number[];
+    setTpaRange(range);
+    
+    const updatedFilters = {
+      ...localFilters,
+      tpaRange: {
+        min: range[0],
+        max: range[1]
+      }
+    };
+    
+    setLocalFilters(updatedFilters);
+    setHasChanges(true);
+    storePendingFilters(updatedFilters);
+  };
   // Handler for simple filter changes with auto-apply on removal
   const handleFilterChangeWithAutoApply = (field: string, value: any) => {
     const updatedLocalFilters = { ...localFilters, [field]: value };
@@ -694,6 +739,79 @@ export const WorkingFiltersInterface: React.FC<WorkingFiltersInterfaceProps> = (
             sx={selectStyles}
             slotProps={{ paper: { sx: getDropdownPaperStyles() } }}
           />
+          {/* 🆕 NEW: TPA Range Slider for Field Consultants */}
+<Box sx={{ mt: 2, px: 1 }}>
+  <Typography variant="subtitle2" sx={{ 
+    color: 'white', 
+    mb: 1, 
+    fontWeight: 'bold',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 0.5
+  }}>
+    <TrendingUp sx={{ fontSize: '1rem' }} />
+    Field Consultant TPA Range
+  </Typography>
+  
+  <Box sx={{ px: 1 }}>
+    <Box sx={{ 
+      display: 'flex', 
+      justifyContent: 'space-between', 
+      mb: 1,
+      color: '#6366f1',
+      fontSize: '0.85rem',
+      fontWeight: 'bold'
+    }}>
+      <span>{formatTpaValue(tpaRange[0])}</span>
+      <span>{formatTpaValue(tpaRange[1])}</span>
+    </Box>
+    
+    <Slider
+      value={tpaRange}
+      onChange={handleTpaRangeChange}
+      onChangeCommitted={() => {
+        console.log('TPA range changed:', tpaRange);
+      }}
+      valueLabelDisplay="auto"
+      valueLabelFormat={formatTpaValue}
+      min={tpaRangeLimits.min}
+      max={tpaRangeLimits.max}
+      step={Math.max(1, Math.floor((tpaRangeLimits.max - tpaRangeLimits.min) / 100))}
+      sx={{
+        color: '#6366f1',
+        '& .MuiSlider-thumb': {
+          bgcolor: '#6366f1',
+          border: '2px solid white',
+          '&:hover, &.Mui-focusVisible': {
+            boxShadow: '0 0 0 8px rgba(99, 102, 241, 0.16)'
+          }
+        },
+        '& .MuiSlider-track': {
+          bgcolor: '#6366f1',
+          border: 'none'
+        },
+        '& .MuiSlider-rail': {
+          bgcolor: 'rgba(99, 102, 241, 0.2)'
+        },
+        '& .MuiSlider-valueLabel': {
+          bgcolor: '#6366f1',
+          '&:before': {
+            borderTopColor: '#6366f1'
+          }
+        }
+      }}
+    />
+    
+    <Typography variant="caption" sx={{ 
+      color: 'rgba(255, 255, 255, 0.5)',
+      fontSize: '0.75rem',
+      display: 'block',
+      mt: 0.5
+    }}>
+      Filter field consultants by Total Plan Assets (TPA)
+    </Typography>
+  </Box>
+</Box>
 
           
         

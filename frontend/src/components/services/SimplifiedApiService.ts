@@ -143,7 +143,16 @@ export class SimplifiedApiService {
     if (filters.influenceLevels?.length) filterRequest.influenceLevels = filters.influenceLevels;
     if (filters.mandateManagers?.length) filterRequest.mandateManagers = filters.mandateManagers;
     if (filters.universeNames?.length) filterRequest.universeNames = filters.universeNames;
-   
+    
+    // 🆕 NEW: Add TPA range to filter request
+    if (filters.tpaRange) {
+      filterRequest.tpaMin = filters.tpaRange.min;
+      filterRequest.tpaMax = filters.tpaRange.max;
+      console.log('Applying TPA filter:', {
+        min: filters.tpaRange.min,
+        max: filters.tpaRange.max
+      });
+    }
     console.log('Sending clean filter request:', filterRequest);
 
     const response = await fetch(
