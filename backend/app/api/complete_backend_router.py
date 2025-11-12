@@ -37,6 +37,11 @@ class CompleteFilterRequest(BaseModel):
     sales_regions: Optional[List[str]] = None
     ratings: Optional[List[str]] = None
     influenceLevels: Optional[List[str]] = None
+    mandateManagers: Optional[List[str]] = None
+    universeNames: Optional[List[str]] = None
+    # 🆕 NEW: TPA range filter
+    tpaMin: Optional[float] = None
+    tpaMax: Optional[float] = None
 
 
 # Add this new request model after your existing CompleteFilterRequest class

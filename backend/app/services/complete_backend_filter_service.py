@@ -461,7 +461,7 @@ class CompleteBackendFilterService:
         companies_dict = {}
         products_dict = {}
         incumbent_products_dict = {}
-        
+        tpa_values = []
         
         # Extract data from nodes
         for node in nodes:
@@ -479,10 +479,25 @@ class CompleteBackendFilterService:
                     if data.get('consultant_advisor'):
                         self._add_to_advisor_set(data['consultant_advisor'], consultant_advisors)
                         
-            elif node_type == 'FIELD_CONSULTANT' and data.get('name'):
-                name = data['name'].strip()
-                if name and not self._is_malformed_name(name):
-                    field_consultants_dict[name] = {'id': name, 'name': name}
+            elif node_type == 'FIELD_CONSULTANT':
+                if data.get('name'):
+                    name = data['name'].strip()
+                    if name and not self._is_malformed_name(name):
+                        field_consultants_dict[name] = {'id': name, 'name': name}
+                
+                tpa = data.get('tpa')
+                if tpa is not None and tpa > 0:
+                    tpa_values.append(float(tpa))
+                
+                tpa_range = None
+                if tpa_values:
+                    tpa_range = {
+                        "min": min(tpa_values),
+                        "max": max(tpa_values),
+                        "average": sum(tpa_values) / len(tpa_values)
+                    }
+                    print(f"Filtered TPA Range: ${tpa_range['min']:,.0f} - ${tpa_range['max']:,.0f}")
+                
                     
             elif node_type == 'COMPANY' and data.get('name'):
                 name = data['name'].strip()
@@ -534,6 +549,11 @@ class CompleteBackendFilterService:
                                 ratings.add(rating['rankgroup'])
 
         
+                # 🆕 NEW: Calculate TPA range from filtered field consultants
+            
+
+            
+
            
         
         # NEW: Extract data from relationships
@@ -591,8 +611,8 @@ class CompleteBackendFilterService:
             # NEW: Use actual data instead of static values
             "mandate_statuses": mandate_statuses_list if mandate_statuses_list else ["Active", "At Risk", "Conversion in Progress"],  # Fallback to static if none found
             "influence_levels": influence_levels_list if influence_levels_list else ["1", "2", "3", "4", "High", "medium", "low", "UNK"],  # Fallback to static if none found
-            "ratings": ratings_list if ratings_list else ["Positive", "Negative", "Neutral", "Introduced"]  # Fallback to static if none found
-        
+            "ratings": ratings_list if ratings_list else ["Positive", "Negative", "Neutral", "Introduced"],  # Fallback to static if none found
+            "tpa_range": tpa_range
         }
         
         if recommendations_mode:
@@ -1160,6 +1180,34 @@ class CompleteBackendFilterService:
             # Note: rating relationships don't have level_of_influence, only COVERS does
             return conditions
         
+        def build_filter_conditions(fc_var: str) -> tuple:
+            """Build WHERE conditions and parameters from filters."""
+            conditions = []
+            params = {}
+            
+            # ... existing filter conditions ...
+            
+            # 🆕 NEW: TPA Range Filter for Field Consultants
+            tpa_min = filters.get('tpaMin')
+            tpa_max = filters.get('tpaMax')
+            
+            if tpa_min is not None or tpa_max is not None:
+                if tpa_min is not None and tpa_max is not None:
+                    conditions.append(f"""(labels(node)[0] <> {fc_var} OR (node.fc_total_plan_assets >= $tpa_min AND node.fc_total_plan_assets <= $tpa_max))""")
+                    params['tpa_min'] = float(tpa_min)
+                    params['tpa_max'] = float(tpa_max)
+                    print(f"🎯 TPA filter: ${tpa_min:,.0f} - ${tpa_max:,.0f}")
+                elif tpa_min is not None:
+                    conditions.append(f"""(labels(node)[0] <> {fc_var} OR node.fc_total_plan_assets >= $tpa_min)""")
+                    params['tpa_min'] = float(tpa_min)
+                    print(f"🎯 TPA filter: >= ${tpa_min:,.0f}")
+                elif tpa_max is not None:
+                    conditions.append(f"""(labels(node)[0] <> {fc_var} OR node.fc_total_plan_assets <= $tpa_max)""")
+                    params['tpa_max'] = float(tpa_max)
+                    print(f"🎯 TPA filter: <= ${tpa_max:,.0f}")
+            
+            return conditions, params
+        
         def combine_conditions(condition_lists: List[List[str]]) -> str:
             all_conditions = []
             for condition_list in condition_lists:
@@ -1185,6 +1233,7 @@ class CompleteBackendFilterService:
                     build_field_consultant_conditions('fc'),
                     build_mandate_conditions('owns'),
                     build_influence_conditions('cov'),  # Only cov has level_of_influence
+                    build_filter_conditions('fc'),
                     build_ratings_conditions_for_with()  # Apply ratings filters
                 ])}
                 RETURN cons as consultant, fc as field_consultant, c as company, ip as incumbent_product, p as product,
@@ -1280,6 +1329,7 @@ class CompleteBackendFilterService:
                         aca: node.aca,
                         consultant_advisor: node.consultant_advisor,
                         mandate_status: node.mandate_status,
+                        tpa: node.fc_total_plan_assets,  // 🆕 NEW: Include TPA in node data
                         ratings: CASE 
                             WHEN labels(node)[0] IN ['PRODUCT', 'INCUMBENT_PRODUCT'] THEN
                                 HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
@@ -1340,6 +1390,7 @@ class CompleteBackendFilterService:
                     build_field_consultant_conditions('fc'),
                     build_mandate_conditions('owns'),
                     build_influence_conditions('cov'),  # Only cov has level_of_influence
+                    build_filter_conditions('fc'),
                     build_ratings_conditions_for_with()  # Apply ratings filters
                 ])}
                 RETURN cons as consultant, fc as field_consultant, c as company, p as product,
@@ -1429,6 +1480,7 @@ class CompleteBackendFilterService:
                         aca: node.aca,
                         consultant_advisor: node.consultant_advisor,
                         mandate_status: node.mandate_status,
+                        tpa: node.fc_total_plan_assets,  // 🆕 NEW: Include TPA in node data
                         ratings: CASE 
                             WHEN labels(node)[0] IN ['PRODUCT', 'INCUMBENT_PRODUCT'] THEN
                                 HEAD([rating_group IN all_ratings_map WHERE rating_group.product_id = node.id | rating_group.ratings])
